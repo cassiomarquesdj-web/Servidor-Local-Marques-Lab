@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "policy": "strict",
+  "categories": [
+    "sports_betting",
+    "casino",
+    "live_casino",
+    "slots",
+    "roulette",
+    "blackjack",
+    "real_money_poker",
+    "real_money_bingo",
+    "crash_games",
+    "lottery_betting",
+    "gambling_affiliate",
+    "gambling_promotion"
+  ],
+  "keywords": [
+    "bet",
+    "bets",
+    "betting",
+    "sportsbook",
+    "casino",
+    "cassino",
+    "slot",
+    "slots",
+    "roulette",
+    "roleta",
+    "blackjack",
+    "poker",
+    "bingo",
+    "aposta",
+    "apostas",
+    "apostar",
+    "odd",
+    "odds",
+    "jogo de azar",
+    "jogos de azar",
+    "casa de apostas",
+    "casa de aposta",
+    "plataforma de apostas",
+    "palpite"
+  ],
+  "notes": [
+    "Keywords are a secondary signal, not the only blocking mechanism.",
+    "The production catalog must be expanded with maintained domains, URL patterns and classifier data."
+  ]
+}

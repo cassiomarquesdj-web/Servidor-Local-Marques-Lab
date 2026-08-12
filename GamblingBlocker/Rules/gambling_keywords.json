@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "mode": "strict",
+  "categories": {
+    "casino": ["casino", "cassino", "slots", "slot", "roleta", "roulette", "blackjack", "bacará", "baccarat"],
+    "sports_betting": ["aposta", "apostas", "bet", "bets", "sportsbook", "odd", "odds", "palpite", "cotações"],
+    "poker": ["poker", "holdem", "texas holdem", "pôquer"],
+    "bingo": ["bingo"],
+    "lottery": ["loteria", "lottery", "loto", "mega-sena", "megasena", "quina", "lotomania"],
+    "crash": ["aviator", "aviãozinho", "crash", "plinko", "jetx", "fortune tiger", "fortune ox", "fortune rabbit"],
+    "gambling_general": ["gambling", "jogo de azar", "jogos de azar", "betting", "wager", "wagering", "jackpot", "prêmio em dinheiro"]
+  }
+}
