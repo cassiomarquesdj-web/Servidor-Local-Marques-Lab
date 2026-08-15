@@ -24,6 +24,12 @@ jobs:
           cache: "pip"
           cache-dependency-path: marqueslab-4k-download/requirements.txt
 
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version | head -n 1
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -50,20 +56,28 @@ jobs:
           checks = {
               "yt_dlp": importlib.util.find_spec("yt_dlp") is not None,
               "PySide6": importlib.util.find_spec("PySide6") is not None,
+              "imageio_ffmpeg": importlib.util.find_spec("imageio_ffmpeg") is not None,
           }
           for name, ok in checks.items():
               print(f"{name}: {'PASS' if ok else 'WARNING'}")
               assert ok, f"Missing dependency: {name}"
           PY
 
-      - name: FFmpeg diagnostic
+      - name: FFmpeg integration diagnostic
         run: |
-          if command -v ffmpeg >/dev/null 2>&1; then
-            echo "FFMPEG: PASS"
-            ffmpeg -version | head -n 1
-          else
-            echo "FFMPEG: WARNING — unavailable in CI"
-          fi
+          python - <<'PY'
+          import subprocess
+          from pathlib import Path
+          out = Path("ci-fixture.mp4")
+          subprocess.run([
+              "ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=10",
+              "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100", "-t", "1",
+              "-c:v", "libx264", "-c:a", "aac", str(out)
+          ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+          assert out.exists() and out.stat().st_size > 0
+          out.unlink()
+          print("FFMPEG_PIPELINE: PASS")
+          PY
 
       - name: Generate diagnostic report
         if: always()
@@ -74,7 +88,7 @@ jobs:
             echo "- Commit: $GITHUB_SHA"
             echo "- Runner: $RUNNER_OS"
             echo "- Python: $(python --version 2>&1)"
-            echo "- Tests: see previous step"
+            echo "- FFmpeg: $(ffmpeg -version | head -n 1)"
             echo "- Real provider download: NOT EXECUTED"
             echo "- Authentication/DRM bypass: NOT SUPPORTED"
           } > DIAGNOSTICO-CI.md
