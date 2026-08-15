@@ -5,8 +5,14 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urlparse
 import re
+import shutil
 
 import yt_dlp
+
+try:
+    import imageio_ffmpeg
+except ImportError:  # pragma: no cover - optional fallback for source installs
+    imageio_ffmpeg = None
 
 
 @dataclass(frozen=True)
@@ -48,6 +54,16 @@ def choose_audio() -> MediaChoice:
     return MediaChoice("audio", "high", "bestaudio/best", "mp3")
 
 
+def ffmpeg_executable() -> str | None:
+    """Prefer the bundled imageio-ffmpeg binary, then a system FFmpeg."""
+    if imageio_ffmpeg is not None:
+        try:
+            return imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            pass
+    return shutil.which("ffmpeg")
+
+
 class DownloadEngine:
     def __init__(self, output_dir: Path, progress: Callable[[dict], None] | None = None):
         self.output_dir = output_dir
@@ -56,7 +72,7 @@ class DownloadEngine:
         self._ydl: yt_dlp.YoutubeDL | None = None
 
     def _common(self) -> dict:
-        return {
+        opts = {
             "noplaylist": False,
             "quiet": True,
             "no_warnings": True,
@@ -67,9 +83,12 @@ class DownloadEngine:
             "fragment_retries": 5,
             "concurrent_fragment_downloads": 4,
             "progress_hooks": [self._hook],
-            # Deliberately do not load cookies or credentials.
             "cookiefile": None,
         }
+        ffmpeg = ffmpeg_executable()
+        if ffmpeg:
+            opts["ffmpeg_location"] = str(Path(ffmpeg).parent)
+        return opts
 
     def _hook(self, data: dict) -> None:
         self.progress(data)
@@ -78,8 +97,7 @@ class DownloadEngine:
         url = normalize_url(url)
         opts = self._common() | {"skip_download": True}
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-        return info
+            return ydl.extract_info(url, download=False)
 
     def download(self, url: str, choice: MediaChoice) -> None:
         url = normalize_url(url)
@@ -96,8 +114,10 @@ class DownloadEngine:
             }]
         with yt_dlp.YoutubeDL(opts) as ydl:
             self._ydl = ydl
-            ydl.download([url])
-            self._ydl = None
+            try:
+                ydl.download([url])
+            finally:
+                self._ydl = None
 
     def cancel(self) -> None:
         if self._ydl is not None:
