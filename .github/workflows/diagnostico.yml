@@ -1,0 +1,82 @@
+name: Marques Lab 4K Download — Diagnóstico
+
+on:
+  push:
+    branches: ["agent/marqueslab-4k-download", "main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest
+
+      - name: Static project diagnostics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          required = ["README.md"]
+          for item in required:
+              assert Path(item).exists(), f"Missing required file: {item}"
+          print("PROJECT_STRUCTURE: PASS")
+          PY
+
+      - name: Unit tests
+        run: pytest -q
+
+      - name: Engine dependency diagnostics
+        run: |
+          python - <<'PY'
+          import importlib.util
+          checks = {
+              "yt_dlp": importlib.util.find_spec("yt_dlp") is not None,
+              "PySide6": importlib.util.find_spec("PySide6") is not None,
+          }
+          for name, ok in checks.items():
+              print(f"{name}: {'PASS' if ok else 'WARNING'}")
+          PY
+
+      - name: FFmpeg diagnostic
+        run: |
+          if command -v ffmpeg >/dev/null 2>&1; then
+            echo "FFMPEG: PASS"
+            ffmpeg -version | head -n 1
+          else
+            echo "FFMPEG: WARNING — unavailable in CI"
+          fi
+
+      - name: Generate diagnostic report
+        if: always()
+        run: |
+          {
+            echo "# Marques Lab 4K Download — CI Diagnostic"
+            echo
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Runner: $RUNNER_OS"
+            echo "- Python: $(python --version 2>&1)"
+            echo "- Tests: see previous step"
+            echo "- Real provider download: NOT EXECUTED"
+            echo "- Authentication/DRM bypass: NOT SUPPORTED"
+          } > DIAGNOSTICO-CI.md
+
+      - name: Upload diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: marqueslab-diagnostic
+          path: DIAGNOSTICO-CI.md
