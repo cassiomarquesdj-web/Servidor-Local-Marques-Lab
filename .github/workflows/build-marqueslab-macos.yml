@@ -1,0 +1,137 @@
+name: Marques Lab 4K Download — macOS Build
+
+on:
+  push:
+    branches: ["agent/marqueslab-4k-download"]
+  workflow_dispatch:
+
+env:
+  APP_NAME: Marques Lab 4K Download
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+            artifact: MarquesLab-4K-Download-macOS-AppleSilicon
+          - runner: macos-13
+            arch: x86_64
+            artifact: MarquesLab-4K-Download-macOS-Intel
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        working-directory: marqueslab-4k-download
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller imageio-ffmpeg
+
+      - name: Locate bundled FFmpeg
+        id: ffmpeg
+        run: |
+          FF="$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
+          echo "path=$FF" >> "$GITHUB_OUTPUT"
+          echo "$(dirname "$FF")" >> "$GITHUB_PATH"
+          "$FF" -version | head -n 1
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Build application
+        run: |
+          rm -rf build dist
+          python -m PyInstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --name "$APP_NAME" \
+            --add-binary "${{ steps.ffmpeg.outputs.path }}:ffmpeg" \
+            app.py
+
+      - name: Require Developer ID secrets
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          test -n "$APPLE_CERTIFICATE_BASE64" || { echo "Missing APPLE_CERTIFICATE_BASE64"; exit 1; }
+          test -n "$APPLE_CERTIFICATE_PASSWORD" || { echo "Missing APPLE_CERTIFICATE_PASSWORD"; exit 1; }
+
+      - name: Sign application with Developer ID
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          APP="dist/$APP_NAME.app"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          CERT="$RUNNER_TEMP/developer_id.p12"
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$CERT"
+          security create-keychain -p "build" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "build" "$KEYCHAIN"
+          security import "$CERT" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          test -n "$IDENTITY"
+          codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | grep -E 'Authority=Developer ID Application|TeamIdentifier=' 
+
+      - name: Smoke test packaged app
+        run: test -d "dist/$APP_NAME.app"
+
+      - name: Create DMG
+        run: |
+          rm -rf dmg-root
+          mkdir -p dmg-root
+          cp -R "dist/$APP_NAME.app" "dmg-root/"
+          ln -s /Applications "dmg-root/Applications"
+          hdiutil create \
+            -volname "$APP_NAME" \
+            -srcfolder dmg-root \
+            -ov \
+            -format UDZO \
+            "../MarquesLab-4K-Download-${{ matrix.arch }}.dmg"
+
+      - name: Notarize with Apple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          test -n "$APPLE_ID" || { echo "Missing APPLE_ID"; exit 1; }
+          test -n "$APPLE_TEAM_ID" || { echo "Missing APPLE_TEAM_ID"; exit 1; }
+          test -n "$APPLE_APP_PASSWORD" || { echo "Missing APPLE_APP_PASSWORD"; exit 1; }
+          DMG="../MarquesLab-4K-Download-${{ matrix.arch }}.dmg"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+
+      - name: Validate Gatekeeper acceptance
+        run: |
+          DMG="../MarquesLab-4K-Download-${{ matrix.arch }}.dmg"
+          hdiutil imageinfo "$DMG" >/dev/null
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$RUNNER_TEMP/mount" 
+          spctl --assess --type execute --verbose=4 "$RUNNER_TEMP/mount/$APP_NAME.app"
+          hdiutil detach "$RUNNER_TEMP/mount"
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-DMG
+          path: MarquesLab-4K-Download-${{ matrix.arch }}.dmg
