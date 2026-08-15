@@ -6,6 +6,7 @@ from typing import Callable
 from urllib.parse import urlparse
 import re
 import shutil
+import sys
 
 import yt_dlp
 
@@ -55,7 +56,11 @@ def choose_audio() -> MediaChoice:
 
 
 def ffmpeg_executable() -> str | None:
-    """Prefer the bundled imageio-ffmpeg binary, then a system FFmpeg."""
+    """Prefer the FFmpeg binary bundled into a frozen desktop build."""
+    if getattr(sys, "frozen", False):
+        bundled = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "ffmpeg"
+        if bundled.exists():
+            return str(bundled)
     if imageio_ffmpeg is not None:
         try:
             return imageio_ffmpeg.get_ffmpeg_exe()
