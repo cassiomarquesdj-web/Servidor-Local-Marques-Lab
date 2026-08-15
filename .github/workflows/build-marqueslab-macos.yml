@@ -33,6 +33,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pyinstaller imageio-ffmpeg
 
       - name: Unit tests
         run: python -m unittest discover -s tests -v
@@ -55,12 +56,25 @@ jobs:
       - name: Smoke test packaged app
         run: test -d "dist/Marques Lab 4K Download.app"
 
-      - name: Package ZIP
+      - name: Create DMG
         run: |
-          ditto -c -k --sequesterRsrc --keepParent "dist/Marques Lab 4K Download.app" "../MarquesLab-4K-Download-${{ matrix.arch }}.zip"
+          mkdir -p dmg-root
+          cp -R "dist/Marques Lab 4K Download.app" "dmg-root/"
+          ln -s /Applications "dmg-root/Applications"
+          hdiutil create \
+            -volname "Marques Lab 4K Download" \
+            -srcfolder dmg-root \
+            -ov \
+            -format UDZO \
+            "../MarquesLab-4K-Download-${{ matrix.arch }}.dmg"
 
-      - name: Upload macOS app
+      - name: Validate DMG
+        run: |
+          test -f "../MarquesLab-4K-Download-${{ matrix.arch }}.dmg"
+          hdiutil imageinfo "../MarquesLab-4K-Download-${{ matrix.arch }}.dmg" >/dev/null
+
+      - name: Upload macOS DMG
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: MarquesLab-4K-Download-${{ matrix.arch }}.zip
+          name: ${{ matrix.artifact }}-DMG
+          path: MarquesLab-4K-Download-${{ matrix.arch }}.dmg
