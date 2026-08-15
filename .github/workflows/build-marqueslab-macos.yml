@@ -35,12 +35,17 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller imageio-ffmpeg
 
-      - name: Unit tests
-        run: python -m unittest discover -s tests -v
-
       - name: Locate bundled FFmpeg
         id: ffmpeg
-        run: echo "path=$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')" >> "$GITHUB_OUTPUT"
+        run: |
+          FF="$({{ 'python' }} -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
+          echo "path=$FF" >> "$GITHUB_OUTPUT"
+          echo "FFmpeg: $FF"
+          echo "$(dirname "$FF")" >> "$GITHUB_PATH"
+          "$FF" -version | head -n 1
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
 
       - name: Build application
         run: |
