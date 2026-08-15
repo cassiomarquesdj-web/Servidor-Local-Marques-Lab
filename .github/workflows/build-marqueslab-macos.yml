@@ -38,7 +38,7 @@ jobs:
       - name: Locate bundled FFmpeg
         id: ffmpeg
         run: |
-          FF="$({{ 'python' }} -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
+          FF="$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
           echo "path=$FF" >> "$GITHUB_OUTPUT"
           echo "FFmpeg: $FF"
           echo "$(dirname "$FF")" >> "$GITHUB_PATH"
