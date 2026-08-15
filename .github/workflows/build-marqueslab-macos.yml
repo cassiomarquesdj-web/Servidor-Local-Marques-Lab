@@ -5,6 +5,9 @@ on:
     branches: ["agent/marqueslab-4k-download"]
   workflow_dispatch:
 
+env:
+  APP_NAME: Marques Lab 4K Download
+
 jobs:
   build:
     strategy:
@@ -40,7 +43,6 @@ jobs:
         run: |
           FF="$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
           echo "path=$FF" >> "$GITHUB_OUTPUT"
-          echo "FFmpeg: $FF"
           echo "$(dirname "$FF")" >> "$GITHUB_PATH"
           "$FF" -version | head -n 1
 
@@ -54,29 +56,77 @@ jobs:
             --noconfirm \
             --clean \
             --windowed \
-            --name "Marques Lab 4K Download" \
+            --name "$APP_NAME" \
             --add-binary "${{ steps.ffmpeg.outputs.path }}:ffmpeg" \
             app.py
 
+      - name: Sign application
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          APP="dist/$APP_NAME.app"
+          if [ -n "$APPLE_CERTIFICATE_BASE64" ]; then
+            KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+            CERT="$RUNNER_TEMP/developer_id.p12"
+            echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$CERT"
+            security create-keychain -p "build" "$KEYCHAIN"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN"
+            security unlock-keychain -p "build" "$KEYCHAIN"
+            security import "$CERT" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+            security list-keychain -d user -s "$KEYCHAIN"
+            security find-identity -v -p codesigning "$KEYCHAIN"
+            IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+            test -n "$IDENTITY"
+            codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "$APP"
+            codesign --verify --deep --strict --verbose=2 "$APP"
+          else
+            # Fallback for development builds when Developer ID secrets are not configured.
+            codesign --force --deep --sign - "$APP"
+            codesign --verify --deep --strict --verbose=2 "$APP"
+          fi
+
       - name: Smoke test packaged app
-        run: test -d "dist/Marques Lab 4K Download.app"
+        run: test -d "dist/$APP_NAME.app"
 
       - name: Create DMG
         run: |
+          rm -rf dmg-root
           mkdir -p dmg-root
-          cp -R "dist/Marques Lab 4K Download.app" "dmg-root/"
+          cp -R "dist/$APP_NAME.app" "dmg-root/"
           ln -s /Applications "dmg-root/Applications"
           hdiutil create \
-            -volname "Marques Lab 4K Download" \
+            -volname "$APP_NAME" \
             -srcfolder dmg-root \
             -ov \
             -format UDZO \
             "../MarquesLab-4K-Download-${{ matrix.arch }}.dmg"
 
+      - name: Optional notarization
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          DMG="../MarquesLab-4K-Download-${{ matrix.arch }}.dmg"
+          if [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] && [ -n "$APPLE_APP_PASSWORD" ]; then
+            xcrun notarytool submit "$DMG" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --wait
+            xcrun stapler staple "$DMG"
+            xcrun stapler validate "$DMG"
+            echo "NOTARIZATION: PASS"
+          else
+            echo "NOTARIZATION: SKIPPED — Developer ID/Apple credentials are not configured"
+          fi
+
       - name: Validate DMG
         run: |
-          test -f "../MarquesLab-4K-Download-${{ matrix.arch }}.dmg"
-          hdiutil imageinfo "../MarquesLab-4K-Download-${{ matrix.arch }}.dmg" >/dev/null
+          DMG="../MarquesLab-4K-Download-${{ matrix.arch }}.dmg"
+          test -f "$DMG"
+          hdiutil imageinfo "$DMG" >/dev/null
 
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4
