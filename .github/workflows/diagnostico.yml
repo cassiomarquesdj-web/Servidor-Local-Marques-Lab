@@ -10,6 +10,9 @@ on:
 jobs:
   diagnostics:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: marqueslab-4k-download
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,18 +22,19 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+          cache-dependency-path: marqueslab-4k-download/requirements.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -r requirements.txt
           pip install pytest
 
       - name: Static project diagnostics
         run: |
           python - <<'PY'
           from pathlib import Path
-          required = ["README.md"]
+          required = ["README.md", "engine.py", "app.py", "requirements.txt"]
           for item in required:
               assert Path(item).exists(), f"Missing required file: {item}"
           print("PROJECT_STRUCTURE: PASS")
@@ -49,6 +53,7 @@ jobs:
           }
           for name, ok in checks.items():
               print(f"{name}: {'PASS' if ok else 'WARNING'}")
+              assert ok, f"Missing dependency: {name}"
           PY
 
       - name: FFmpeg diagnostic
@@ -79,4 +84,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: marqueslab-diagnostic
-          path: DIAGNOSTICO-CI.md
+          path: marqueslab-4k-download/DIAGNOSTICO-CI.md
