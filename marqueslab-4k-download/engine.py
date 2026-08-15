@@ -86,11 +86,7 @@ def ffmpeg_executable() -> str | None:
 
 
 class DownloadEngine:
-    """Reliable yt-dlp facade used by the desktop manager.
-
-    The engine deliberately delegates access control to the source/provider. It does
-    not accept credentials, cookies, DRM bypasses or authentication circumvention.
-    """
+    """Reliable yt-dlp facade used by the desktop manager."""
 
     def __init__(self, output_dir: Path, progress: Callable[[dict], None] | None = None):
         self.output_dir = Path(output_dir)
@@ -119,7 +115,6 @@ class DownloadEngine:
             "download_archive": str(archive),
             "progress_hooks": [self._hook],
             "cookiefile": None,
-            "cachedir": True,
         }
         ffmpeg = ffmpeg_executable()
         if ffmpeg:
@@ -136,8 +131,7 @@ class DownloadEngine:
         url = normalize_url(url)
         opts = self._common(playlist=playlist) | {"skip_download": True}
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-        return info
+            return ydl.extract_info(url, download=False)
 
     def download(self, url: str, choice: MediaChoice, *, playlist: bool = False) -> None:
         url = normalize_url(url)
@@ -146,7 +140,6 @@ class DownloadEngine:
             "format": choice.format_selector,
             "outtmpl": str(self.output_dir / "%(title).160B [%(id)s].%(ext)s"),
             "merge_output_format": "mp4" if choice.mode == "video" else None,
-            "postprocessor_args": {"merger": ["-movflags", "+faststart"]},
         }
         if choice.mode == "audio":
             opts["postprocessors"] = [{
