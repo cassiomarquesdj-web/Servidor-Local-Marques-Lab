@@ -7,12 +7,13 @@ from urllib.parse import urlparse
 import re
 import shutil
 import sys
+import threading
 
 import yt_dlp
 
 try:
     import imageio_ffmpeg
-except ImportError:  # pragma: no cover - optional fallback for source installs
+except ImportError:  # pragma: no cover
     imageio_ffmpeg = None
 
 
@@ -22,6 +23,10 @@ class MediaChoice:
     quality: str
     format_selector: str
     extension: str
+
+
+class DownloadCancelled(Exception):
+    """Raised internally when the user cancels an active download."""
 
 
 def normalize_url(value: str) -> str:
@@ -34,33 +39,44 @@ def normalize_url(value: str) -> str:
     return value
 
 
+def split_urls(value: str) -> list[str]:
+    urls: list[str] = []
+    for raw in re.split(r"[\r\n]+", value):
+        raw = raw.strip()
+        if not raw:
+            continue
+        urls.append(normalize_url(raw))
+    return list(dict.fromkeys(urls))
+
+
 def safe_filename(name: str) -> str:
     name = re.sub(r"[\\/:*?\"<>|\x00-\x1f]", "_", name).strip(" .")
     return name[:180] or "MarquesLab_Media"
 
 
 def choose_video(quality: str = "best") -> MediaChoice:
-    if quality == "2160p":
-        selector = "bestvideo[height<=2160]+bestaudio/best[height<=2160]"
-    elif quality == "1440p":
-        selector = "bestvideo[height<=1440]+bestaudio/best[height<=1440]"
-    elif quality == "1080p":
-        selector = "bestvideo[height<=1080]+bestaudio/best[height<=1080]"
-    else:
-        selector = "bestvideo+bestaudio/best"
-    return MediaChoice("video", quality, selector, "mp4")
+    selectors = {
+        "2160p": "bestvideo[height<=2160]+bestaudio/best[height<=2160]",
+        "1440p": "bestvideo[height<=1440]+bestaudio/best[height<=1440]",
+        "1080p": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+        "720p": "bestvideo[height<=720]+bestaudio/best[height<=720]",
+        "best": "bestvideo+bestaudio/best",
+    }
+    quality = quality if quality in selectors else "best"
+    return MediaChoice("video", quality, selectors[quality], "mp4")
 
 
 def choose_audio() -> MediaChoice:
-    return MediaChoice("audio", "high", "bestaudio/best", "mp3")
+    return MediaChoice("audio", "320 kbps", "bestaudio/best", "mp3")
 
 
 def ffmpeg_executable() -> str | None:
-    """Prefer the FFmpeg binary bundled into a frozen desktop build."""
     if getattr(sys, "frozen", False):
-        bundled = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "ffmpeg"
-        if bundled.exists():
-            return str(bundled)
+        root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+        for name in ("ffmpeg", "ffmpeg.exe"):
+            bundled = root / name
+            if bundled.exists():
+                return str(bundled)
     if imageio_ffmpeg is not None:
         try:
             return imageio_ffmpeg.get_ffmpeg_exe()
@@ -70,46 +86,67 @@ def ffmpeg_executable() -> str | None:
 
 
 class DownloadEngine:
+    """Reliable yt-dlp facade used by the desktop manager.
+
+    The engine deliberately delegates access control to the source/provider. It does
+    not accept credentials, cookies, DRM bypasses or authentication circumvention.
+    """
+
     def __init__(self, output_dir: Path, progress: Callable[[dict], None] | None = None):
-        self.output_dir = output_dir
+        self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.progress = progress or (lambda _: None)
         self._ydl: yt_dlp.YoutubeDL | None = None
+        self._cancel_event = threading.Event()
 
-    def _common(self) -> dict:
-        opts = {
-            "noplaylist": False,
+    def _common(self, *, playlist: bool = False) -> dict:
+        archive = self.output_dir / ".marqueslab-download-archive.txt"
+        opts: dict = {
+            "noplaylist": not playlist,
             "quiet": True,
             "no_warnings": True,
             "restrictfilenames": False,
             "windowsfilenames": True,
             "continuedl": True,
-            "retries": 5,
-            "fragment_retries": 5,
-            "concurrent_fragment_downloads": 4,
+            "overwrites": False,
+            "nooverwrites": True,
+            "retries": 10,
+            "file_access_retries": 5,
+            "fragment_retries": 10,
+            "socket_timeout": 30,
+            "concurrent_fragment_downloads": 8,
+            "sleep_interval": 0,
+            "download_archive": str(archive),
             "progress_hooks": [self._hook],
             "cookiefile": None,
+            "cachedir": True,
         }
         ffmpeg = ffmpeg_executable()
         if ffmpeg:
             opts["ffmpeg_location"] = str(Path(ffmpeg).parent)
+            opts["prefer_ffmpeg"] = True
         return opts
 
     def _hook(self, data: dict) -> None:
+        if self._cancel_event.is_set():
+            raise DownloadCancelled("Download cancelado pelo usuário")
         self.progress(data)
 
-    def analyze(self, url: str) -> dict:
+    def analyze(self, url: str, *, playlist: bool = False) -> dict:
         url = normalize_url(url)
-        opts = self._common() | {"skip_download": True}
+        opts = self._common(playlist=playlist) | {"skip_download": True}
         with yt_dlp.YoutubeDL(opts) as ydl:
-            return ydl.extract_info(url, download=False)
+            info = ydl.extract_info(url, download=False)
+        return info
 
-    def download(self, url: str, choice: MediaChoice) -> None:
+    def download(self, url: str, choice: MediaChoice, *, playlist: bool = False) -> None:
         url = normalize_url(url)
-        opts = self._common() | {
+        self._cancel_event.clear()
+        opts = self._common(playlist=playlist) | {
             "format": choice.format_selector,
-            "outtmpl": str(self.output_dir / "%(title).180B.%(ext)s"),
+            "outtmpl": str(self.output_dir / "%(title).160B [%(id)s].%(ext)s"),
             "merge_output_format": "mp4" if choice.mode == "video" else None,
+            "postprocessor_args": {"merger": ["-movflags", "+faststart"]},
         }
         if choice.mode == "audio":
             opts["postprocessors"] = [{
@@ -117,14 +154,32 @@ class DownloadEngine:
                 "preferredcodec": "mp3",
                 "preferredquality": "320",
             }]
+            opts["postprocessor_args"] = {"FFmpegExtractAudio": ["-id3v2_version", "3"]}
         with yt_dlp.YoutubeDL(opts) as ydl:
             self._ydl = ydl
             try:
                 ydl.download([url])
             finally:
                 self._ydl = None
+                self._cancel_event.clear()
 
     def cancel(self) -> None:
+        self._cancel_event.set()
         if self._ydl is not None:
             self._ydl._download_retcode = 1
-            self._ydl = None
+
+    @staticmethod
+    def summarize(info: dict) -> dict:
+        formats = info.get("formats") or []
+        heights = sorted({int(f["height"]) for f in formats if f.get("height")}, reverse=True)
+        return {
+            "title": info.get("title") or "Mídia sem título",
+            "duration": info.get("duration"),
+            "thumbnail": info.get("thumbnail"),
+            "uploader": info.get("uploader") or info.get("channel"),
+            "webpage_url": info.get("webpage_url") or info.get("original_url"),
+            "max_height": heights[0] if heights else None,
+            "heights": heights,
+            "is_playlist": bool(info.get("_type") == "playlist" or info.get("entries")),
+            "entries": len(info.get("entries") or []) if info.get("entries") else 0,
+        }
