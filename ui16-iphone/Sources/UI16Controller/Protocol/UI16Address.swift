@@ -104,6 +104,15 @@ public enum MasterAddress {
     public static let delayR = "m.delayR"
 }
 
+/// Monitoring buses that live under `settings.*` rather than in the channel address space.
+/// Confirmed from `volume-bus.ts` (`settings.solovol`, `settings.hpvol.<n>`).
+public enum VolumeBus {
+    /// Solo bus level.
+    public static let solo = "settings.solovol"
+    /// Headphone output level. `number` is 1-based; the wire index is 0-based.
+    public static func headphones(_ number: Int) -> String { "settings.hpvol.\(number - 1)" }
+}
+
 /// Builds the exact wire keys for parameters, so the app never hand-concatenates addresses.
 public enum UI16Key {
     // MARK: Master-bus channel parameters (`<type>.<n>.<param>`)

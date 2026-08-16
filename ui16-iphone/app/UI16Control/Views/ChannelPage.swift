@@ -9,6 +9,9 @@ struct ChannelPage: View {
     let ref: ChannelRef
     let onSelect: (ChannelRef) -> Void
 
+    @State private var renaming = false
+    @State private var draftName = ""
+
     private var strip: StripState { store.state.strip(ref) }
 
     var body: some View {
@@ -41,10 +44,27 @@ struct ChannelPage: View {
                         .font(Theme.label).foregroundStyle(Theme.textDim)
                 }
                 Spacer()
+                Button {
+                    draftName = strip.name
+                    renaming = true
+                } label: {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: Theme.tapMin, height: Theme.tapMin)
+                }
+                .buttonStyle(.plain)
                 Text(FaderMath.dbString(strip.level))
                     .font(.system(size: 16, weight: .bold).monospacedDigit())
                     .foregroundStyle(Theme.accent)
             }
+        }
+        .alert("Nome do canal", isPresented: $renaming) {
+            TextField(ref.defaultLabel, text: $draftName)
+            Button("Salvar") { store.setName(ref, draftName) }
+            Button("Cancelar", role: .cancel) { }
+        } message: {
+            Text("O nome é gravado na mesa e aparece para todos os clientes.")
         }
     }
 
@@ -99,13 +119,25 @@ struct ChannelPage: View {
                         )
                         if bus == .aux {
                             let post = strip.sendPost[key] ?? false
+                            // Reads as a switch, not a caption — pre/post changes what the
+                            // musician hears in the monitor, so it must look tappable.
                             Button {
                                 store.setSendPost(ref, to: bus, n, !post)
                                 hapticTap()
                             } label: {
-                                Text(post ? "POST-FADER" : "PRE-FADER")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(post ? Theme.accent : Theme.textDim)
+                                HStack(spacing: 5) {
+                                    Image(systemName: post
+                                          ? "arrow.down.right.circle.fill"
+                                          : "arrow.up.left.circle.fill")
+                                        .font(.system(size: 12))
+                                    Text(post ? "PÓS-FADER" : "PRÉ-FADER")
+                                        .font(.system(size: 11, weight: .bold))
+                                }
+                                .padding(.horizontal, 10)
+                                .frame(height: 32)
+                                .foregroundStyle(post ? .black : Theme.text)
+                                .background(post ? Theme.accent : Theme.surfaceHigh)
+                                .clipShape(Capsule())
                             }
                             .buttonStyle(.plain)
                         }

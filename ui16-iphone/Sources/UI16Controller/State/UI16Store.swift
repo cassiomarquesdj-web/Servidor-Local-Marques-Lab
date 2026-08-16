@@ -198,6 +198,21 @@ public final class UI16Store: ObservableObject {
         }
     }
 
+    // MARK: Monitoring buses (solo / headphones)
+
+    public func setSoloVolume(_ value: Double) {
+        let v = clamp01(value)
+        state.raw[VolumeBus.solo] = .number(v)
+        sendContinuous(VolumeBus.solo, UI16Message.setd(VolumeBus.solo, v))
+    }
+
+    public func setHeadphoneVolume(_ number: Int, _ value: Double) {
+        let key = VolumeBus.headphones(number)
+        let v = clamp01(value)
+        state.raw[key] = .number(v)
+        sendContinuous(key, UI16Message.setd(key, v))
+    }
+
     // MARK: Shows / scenes
 
     /// Ask the mixer for its show list. Snapshot and cue lists are requested per show as

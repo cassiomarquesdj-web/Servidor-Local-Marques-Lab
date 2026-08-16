@@ -186,6 +186,10 @@ def initial_state():
         msgs.append(f"SETD^a.{a}.mix^0.55")
         msgs.append(f"SETD^a.{a}.mute^0")
 
+    # monitoring buses live under settings.*
+    msgs.append("SETD^settings.solovol^0.6")
+    msgs.append("SETD^settings.hpvol.0^0.45")
+
     msgs.append("SETD^m.mix^0.75")
     msgs.append("SETD^m.mute^0")
     msgs.append("SETD^m.pan^0.5")
