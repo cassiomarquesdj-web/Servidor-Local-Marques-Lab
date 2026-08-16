@@ -55,6 +55,9 @@ public struct UI16State: Equatable, Sendable {
     /// Latest decoded VU meter frame.
     public var vu = VUFrame()
 
+    /// Shows (scenes) with their snapshots and cues, keyed by show name.
+    public var shows: [String: ShowDetail] = [:]
+
     public var lastMessage = ""
     public var messageCount = 0
     public var vuFrameCount = 0
@@ -74,6 +77,14 @@ public struct UI16State: Equatable, Sendable {
         let n = strip(ref).name
         return n.isEmpty ? ref.defaultLabel : n
     }
+
+    /// Name of the currently loaded show, snapshot and cue (reported by the mixer).
+    public var currentShow: String { raw[UI16Shows.currentShowKey]?.text ?? "" }
+    public var currentSnapshot: String { raw[UI16Shows.currentSnapshotKey]?.text ?? "" }
+    public var currentCue: String { raw[UI16Shows.currentCueKey]?.text ?? "" }
+
+    /// Show names in a stable order.
+    public var showNames: [String] { shows.keys.sorted() }
 
     /// All raw keys that begin with a given prefix, sorted — used to render processing
     /// (EQ/gate/dynamics) and diagnostics without hardcoding parameter names.

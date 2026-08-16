@@ -141,11 +141,38 @@ O que o app faz:
 Assim, **assim que a Ui16 física for conectada**, os endereços reais aparecem sozinhos no
 painel e já ficam operáveis — sem alterar código.
 
-## Cenas / shows
+## Cenas / shows — implementado
 
-A referência trata shows, snapshots e cues por mensagens próprias (`SHOWLIST`,
-`CUELIST`, e `BMSG^SYNC^…` para sincronismo), fora do estado `SETD`/`SETS`. Ainda **não**
-implementado neste app; depende de confirmar o formato de resposta na mesa real.
+Shows, snapshots e cues **não** fazem parte do estado `SETD`/`SETS`. São listas por
+cliente, enviadas apenas quando solicitadas. Confirmação: `show-controller.ts` e
+`resource-lists.ts`.
+
+| Ação | Mensagem | Resposta |
+|---|---|---|
+| Listar shows | `SHOWLIST` | `SHOWLIST^<show>^<show>…` |
+| Listar snapshots | `SNAPSHOTLIST^<show>` | `SNAPSHOTLIST^<show>^<snap>…` |
+| Listar cues | `CUELIST^<show>` | `CUELIST^<show>^<cue>…` |
+| Carregar show | `LOADSHOW^<show>` | estado é reemitido |
+| Carregar snapshot | `LOADSNAPSHOT^<show>^<snap>` | idem |
+| Carregar cue | `LOADCUE^<show>^<cue>` | idem |
+| Salvar snapshot | `SAVESNAPSHOT^<show>^<snap>` | sobrescreve |
+| Salvar cue | `SAVECUE^<show>^<cue>` | sobrescreve |
+
+O que está carregado chega como estado normal: `var.currentShow`,
+`var.currentSnapshot`, `var.currentCue`.
+
+Detalhes que o app trata:
+
+- As listas são **por cliente**: precisam ser pedidas a cada (re)conexão. O app faz isso
+  automaticamente ao conectar.
+- Lista vazia vem com separador final (`CUELIST^Default^`) e **não** deve virar uma
+  entrada de nome vazio.
+- Recall é destrutivo (substitui a mistura ao vivo), então o app **pede confirmação**
+  antes de carregar.
+
+Validado contra o mock, incluindo o caso de show sem snapshots/cues.
+Falta confirmar na mesa física apenas o comportamento de `SAVESNAPSHOT`/`SAVECUE`
+(o app ainda não expõe botão de salvar, para evitar sobrescrever um show por engano).
 
 ## Pendências que exigem a Ui16 física
 

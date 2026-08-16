@@ -228,6 +228,42 @@ def vu_frame(t):
     return "VU2^" + base64.b64encode(bytes(data)).decode()
 
 
+# ---------------------------------------------------------------- Shows / scenes
+
+# Shows with their snapshots and cues. "Vazio" deliberately has no cues, to exercise
+# the empty-list form (`CUELIST^Vazio^`) that the real mixer sends.
+SHOWS = {
+    "Default": {"snapshots": ["Inicial"], "cues": ["Cue 1", "Cue 2"]},
+    "Igreja": {"snapshots": ["Abertura", "Louvor", "Pregacao"], "cues": ["Entrada"]},
+    "Vazio": {"snapshots": [], "cues": []},
+}
+
+
+def resource_reply(payload):
+    """Return the reply for a resource-list request, or None if not one."""
+    parts = payload.split("^")
+    cmd = parts[0]
+
+    if cmd == "SHOWLIST" and len(parts) == 1:
+        return "SHOWLIST^" + "^".join(SHOWS)
+
+    if cmd in ("SNAPSHOTLIST", "CUELIST") and len(parts) == 2:
+        show = parts[1]
+        key = "snapshots" if cmd == "SNAPSHOTLIST" else "cues"
+        entries = SHOWS.get(show, {}).get(key, [])
+        # an empty list is sent with a trailing separator and no entries
+        return f"{cmd}^{show}^" + "^".join(entries)
+
+    if cmd == "LOADSHOW" and len(parts) == 2:
+        return f"SETS^var.currentShow^{parts[1]}"
+    if cmd == "LOADSNAPSHOT" and len(parts) == 3:
+        return f"SETS^var.currentSnapshot^{parts[2]}"
+    if cmd == "LOADCUE" and len(parts) == 3:
+        return f"SETS^var.currentCue^{parts[2]}"
+
+    return None
+
+
 # ---------------------------------------------------------------- Server
 
 def serve_client(conn, addr, verbose):
@@ -267,8 +303,18 @@ def serve_client(conn, addr, verbose):
                 if verbose and alive % 10 == 0:
                     print(f"[mock-ui16] keepalive x{alive}")
                 continue
-            # echo state changes back, exactly like the mixer broadcasting to clients
             print(f"[mock-ui16] <- {payload}")
+
+            # Resource lists are per-client and only sent on request.
+            reply = resource_reply(payload)
+            if reply is not None:
+                try:
+                    send_text(conn, "3:::" + reply)
+                except OSError:
+                    break
+                continue
+
+            # echo state changes back, exactly like the mixer broadcasting to clients
             if payload.startswith(("SETD^", "SETS^")):
                 try:
                     send_text(conn, "3:::" + payload)

@@ -53,6 +53,7 @@ O IP também aparece no painel da própria mesa. Aceita `ip:porta` (ex.: `10.10.
 | **MIXER** | Régua dos 16 canais com VU e mute individual, fader grande do canal selecionado, MUTE/SOLO, master com VU estéreo |
 | **CANAL** | Preamp (ganho em dB, phantom 48V), pan, sends AUX 1–6 e FX 1–4 com pre/post, e todos os parâmetros de processamento que a mesa reportar |
 | **AUX/FX** | Barramentos AUX, FX e SUB com fader, mute e meter |
+| **SHOWS** | Cenas: shows, snapshots e cues salvos na mesa, com confirmação antes de carregar |
 | **DIAG** | Contadores ao vivo, todos os VU (pre/post/pós-fader, estéreo, aux, fx, master) e busca em todas as chaves recebidas |
 
 Decisões de operação ao vivo:
@@ -67,7 +68,7 @@ Decisões de operação ao vivo:
 ## Desenvolvimento
 
 ```bash
-bash scripts/test.sh              # testes da biblioteca (42 testes)
+bash scripts/test.sh              # testes da biblioteca (50 testes)
 bash scripts/build.sh             # compila para simulador
 bash scripts/build.sh device      # compila para iPhone
 bash scripts/archive.sh           # archive (sem assinar se não houver team)
@@ -114,7 +115,9 @@ Cada comando usado, sua fonte de confirmação e as pendências estão em
   confirmado. O app **não inventa** comandos: ele lista os parâmetros reais que a mesa
   reportar e permite editá-los pelo endereço verdadeiro. Ao conectar na Ui16, esses
   controles aparecem sozinhos.
-- **Cenas/presets** ainda não implementados — dependem de capturar as mensagens reais.
+- **Cenas/presets**: carregar shows, snapshots e cues está implementado e validado contra
+  o mock. Salvar/sobrescrever existe na biblioteca, mas ainda não tem botão na interface,
+  para evitar sobrescrever um show por engano durante o evento.
 - Tudo foi validado contra o mock e o simulador. **A confirmação final de cada escrita
   depende da Ui16 física.**
 

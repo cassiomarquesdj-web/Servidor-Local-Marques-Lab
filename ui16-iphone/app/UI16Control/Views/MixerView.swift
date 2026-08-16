@@ -11,12 +11,13 @@ struct MixerView: View {
     @State private var showSettings = false
 
     enum Tab: String, CaseIterable {
-        case mix, channel, buses, diagnostics
+        case mix, channel, buses, shows, diagnostics
         var label: String {
             switch self {
             case .mix: return "MIXER"
             case .channel: return "CANAL"
             case .buses: return "AUX/FX"
+            case .shows: return "SHOWS"
             case .diagnostics: return "DIAG"
             }
         }
@@ -25,6 +26,7 @@ struct MixerView: View {
             case .mix: return "slider.vertical.3"
             case .channel: return "dial.high.fill"
             case .buses: return "arrow.triangle.branch"
+            case .shows: return "square.stack.3d.up.fill"
             case .diagnostics: return "waveform.path.ecg"
             }
         }
@@ -52,6 +54,8 @@ struct MixerView: View {
                     ChannelPage(store: store, ref: selected, onSelect: { selected = $0 })
                 case .buses:
                     BusesPage(store: store)
+                case .shows:
+                    ShowsPage(store: store)
                 case .diagnostics:
                     DiagnosticsPage(store: store)
                 }

@@ -30,8 +30,12 @@ public final class UI16Store: ObservableObject {
                 },
                 onStateChange: { [weak self] newState in
                     Task { @MainActor in
-                        self?.connection = newState
-                        self?.state.connected = (newState == .connected)
+                        guard let self else { return }
+                        self.connection = newState
+                        self.state.connected = (newState == .connected)
+                        // Shows/snapshots/cues are per-client and only sent on request,
+                        // so they must be re-fetched on every (re)connect.
+                        if newState == .connected { self.refreshShows() }
                     }
                 }
             )
@@ -132,6 +136,11 @@ public final class UI16Store: ObservableObject {
             }
             return
         }
+        if let list = UI16Shows.parseList(payload) {
+            applyShowList(list)
+            state.messageCount += 1
+            return
+        }
         guard let msg = UI16Message.parse(payload) else { return }
         state.lastMessage = payload
         state.messageCount += 1
@@ -186,6 +195,65 @@ public final class UI16Store: ObservableObject {
             default:
                 break
             }
+        }
+    }
+
+    // MARK: Shows / scenes
+
+    /// Ask the mixer for its show list. Snapshot and cue lists are requested per show as
+    /// the show names arrive. Resource lists are per-client, so this must run on every
+    /// connect — the mixer does not push them.
+    public func refreshShows() {
+        send(UI16Shows.requestShows())
+    }
+
+    public func loadShow(_ show: String) { send(UI16Shows.loadShow(show)) }
+
+    public func loadSnapshot(show: String, snapshot: String) {
+        send(UI16Shows.loadSnapshot(show: show, snapshot: snapshot))
+    }
+
+    public func loadCue(show: String, cue: String) {
+        send(UI16Shows.loadCue(show: show, cue: cue))
+    }
+
+    /// Overwrites an existing snapshot of the same name.
+    public func saveSnapshot(show: String, snapshot: String) {
+        send(UI16Shows.saveSnapshot(show: show, snapshot: snapshot))
+    }
+
+    /// Overwrites an existing cue of the same name.
+    public func saveCue(show: String, cue: String) {
+        send(UI16Shows.saveCue(show: show, cue: cue))
+    }
+
+    private func applyShowList(_ list: UI16Shows.ListReply) {
+        switch list.command {
+        case "SHOWLIST":
+            for name in list.entries where state.shows[name] == nil {
+                state.shows[name] = ShowDetail()
+            }
+            // drop shows the mixer no longer reports
+            for name in state.shows.keys where !list.entries.contains(name) {
+                state.shows[name] = nil
+            }
+            // the mixer only sends snapshots/cues when asked, per show
+            for name in list.entries {
+                send(UI16Shows.requestSnapshots(show: name))
+                send(UI16Shows.requestCues(show: name))
+            }
+        case "SNAPSHOTLIST":
+            guard let show = list.key else { return }
+            var detail = state.shows[show] ?? ShowDetail()
+            detail.snapshots = list.entries
+            state.shows[show] = detail
+        case "CUELIST":
+            guard let show = list.key else { return }
+            var detail = state.shows[show] ?? ShowDetail()
+            detail.cues = list.entries
+            state.shows[show] = detail
+        default:
+            break
         }
     }
 
