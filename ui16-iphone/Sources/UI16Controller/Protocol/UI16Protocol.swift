@@ -86,8 +86,7 @@ public final class UI16Store: ObservableObject {
         let names = ["input", "player", "sub", "fx", "aux", "master", "line"]
         var index = 8
         for type in 0..<7 {
-            let amount = Int(counts[type])
-            let block = [6, 6, 7, 7, 5, 5, 6][type]
+            let amount = Int(counts[type]); let block = [6, 6, 7, 7, 5, 5, 6][type]
             for channel in 0..<amount {
                 guard index + block <= bytes.count else { return }
                 let n = names[type]
@@ -105,10 +104,13 @@ public final class UI16Store: ObservableObject {
                     state.meters["vu.\(n).\(channel+1).faderL"] = Double(bytes[index+2]) * factor
                     state.meters["vu.\(n).\(channel+1).faderR"] = Double(bytes[index+3]) * factor
                 case "master":
-                    state.meters["vu.master.L"] = Double(bytes[index]) * factor
-                    state.meters["vu.master.R"] = Double(bytes[index+1]) * factor
-                    state.meters["vu.master.faderL"] = Double(bytes[index+2]) * factor
-                    state.meters["vu.master.faderR"] = Double(bytes[index+3]) * factor
+                    if channel == 0 {
+                        state.meters["vu.master.L"] = Double(bytes[index]) * factor
+                        state.meters["vu.master.faderL"] = Double(bytes[index+1]) * factor
+                    } else if channel == 1 {
+                        state.meters["vu.master.R"] = Double(bytes[index]) * factor
+                        state.meters["vu.master.faderR"] = Double(bytes[index+1]) * factor
+                    }
                 default: break
                 }
                 index += block
