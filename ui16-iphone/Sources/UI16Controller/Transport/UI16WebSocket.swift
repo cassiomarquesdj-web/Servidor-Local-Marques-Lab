@@ -11,10 +11,11 @@ actor UI16WebSocket {
 
     private let ip: String
     private var task: URLSessionWebSocketTask?
-    private var session: URLSession
+    private let session: URLSession
     private(set) var state: ConnectionState = .disconnected
     private var keepAliveTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
 
     var onMessage: (@Sendable (String) -> Void)?
     var onStateChange: (@Sendable (ConnectionState) -> Void)?
@@ -26,7 +27,9 @@ actor UI16WebSocket {
 
     func connect() {
         guard task == nil else { return }
+        reconnectTask?.cancel()
         update(.connecting)
+
         guard let url = URL(string: "ws://\(ip)") else {
             update(.failed("IP inválido"))
             return
@@ -35,11 +38,12 @@ actor UI16WebSocket {
         let webSocket = session.webSocketTask(with: url)
         task = webSocket
         webSocket.resume()
+        update(.connected)
 
         receiveTask?.cancel()
         receiveTask = Task { [weak self] in
             guard let self else { return }
-            await self.receiveLoop()
+            await self.receiveLoop(webSocket)
         }
 
         keepAliveTask?.cancel()
@@ -51,11 +55,10 @@ actor UI16WebSocket {
                 await self.sendRaw("ALIVE")
             }
         }
-
-        update(.connected)
     }
 
     func disconnect() {
+        reconnectTask?.cancel()
         receiveTask?.cancel()
         keepAliveTask?.cancel()
         receiveTask = nil
@@ -74,12 +77,11 @@ actor UI16WebSocket {
         do {
             try await task.send(.string("3:::\(message)"))
         } catch {
-            update(.reconnecting)
+            await scheduleReconnect()
         }
     }
 
-    private func receiveLoop() async {
-        guard let task else { return }
+    private func receiveLoop(_ task: URLSessionWebSocketTask) async {
         do {
             while !Task.isCancelled {
                 let message = try await task.receive()
@@ -96,7 +98,7 @@ actor UI16WebSocket {
             }
         } catch {
             if !Task.isCancelled {
-                update(.reconnecting)
+                await scheduleReconnect()
             }
         }
     }
@@ -108,8 +110,33 @@ actor UI16WebSocket {
         }
     }
 
+    private func scheduleReconnect() {
+        guard reconnectTask == nil, state != .disconnected else { return }
+        update(.reconnecting)
+        task = nil
+        receiveTask = nil
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            await self?.reconnectNow()
+        }
+    }
+
+    private func reconnectNow() {
+        reconnectTask = nil
+        connect()
+    }
+
     private func update(_ newState: ConnectionState) {
         state = newState
         onStateChange?(newState)
+    }
+
+    func setCallbacks(
+        onMessage: @escaping @Sendable (String) -> Void,
+        onStateChange: @escaping @Sendable (ConnectionState) -> Void
+    ) {
+        self.onMessage = onMessage
+        self.onStateChange = onStateChange
     }
 }
