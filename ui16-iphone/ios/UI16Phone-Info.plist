@@ -3,10 +3,23 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>Marques Lab UI16</string>
+    <string>UI16 Control</string>
     <key>CFBundleIdentifier</key>
-    <string>com.marqueslab.ui16</string>
+    <string>com.marqueslab.ui16control</string>
+    <key>CFBundleName</key>
+    <string>UI16Phone</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Controlar a mesa Soundcraft Ui16 pela rede Wi-Fi local.</string>
+    <string>O UI16 Control precisa acessar a rede local para controlar a mesa Soundcraft Ui16.</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <key>UILaunchScreen</key>
+    <dict/>
 </dict>
 </plist>
