@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ProtocolTests.build/primary.swiftdeps"
+  },
+  "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/UI16ProtocolTests.swift": {
+    "dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ProtocolTests.build/UI16ProtocolTests.d",
+    "object": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ProtocolTests.build/UI16ProtocolTests.swift.o",
+    "swiftmodule": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ProtocolTests.build/UI16ProtocolTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ProtocolTests.build/UI16ProtocolTests.swiftdeps",
+    "diagnostics": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ProtocolTests.build/UI16ProtocolTests.dia"
+  }
+}
