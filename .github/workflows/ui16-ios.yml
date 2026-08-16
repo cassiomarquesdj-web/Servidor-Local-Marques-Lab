@@ -12,8 +12,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  swift-package:
-    runs-on: macos-latest
+  # Protocol/state library: runs the full test suite. No simulator needed.
+  library:
+    name: Library tests
+    runs-on: macos-15
     defaults:
       run:
         working-directory: ui16-iphone
@@ -22,18 +24,47 @@ jobs:
       - name: Swift version
         run: swift --version
       - name: Build
-        run: swift build -v
+        run: swift build
       - name: Test
-        run: swift test -v
+        run: swift test
 
+  # iPhone app: must compile for a real device slice.
+  app:
+    name: iOS app build
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ui16-iphone
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode
+        run: xcodebuild -version
+      - name: Build app (device slice, unsigned)
+        run: bash scripts/build.sh device
+      - name: Archive (unsigned)
+        run: bash scripts/archive.sh
+
+  # Signed IPA. Runs only on manual dispatch and only when signing secrets exist.
   ipa:
+    name: Signed IPA
     if: github.event_name == 'workflow_dispatch'
-    runs-on: macos-latest
+    runs-on: macos-15
+    needs: [library, app]
+    defaults:
+      run:
+        working-directory: ui16-iphone
     env:
       DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM }}
       PROVISIONING_PROFILE_SPECIFIER: ${{ secrets.PROVISIONING_PROFILE_SPECIFIER }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check signing secrets
+        run: |
+          if [ -z "${DEVELOPMENT_TEAM}" ]; then
+            echo "::error::DEVELOPMENT_TEAM secret is not set. Configure the signing secrets described in ui16-iphone/README.md, or build the IPA locally with scripts/build-ipa.sh."
+            exit 1
+          fi
 
       - name: Import Apple signing certificate
         env:
@@ -41,20 +72,25 @@ jobs:
           CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/ui16-signing.keychain-db"
-          security create-keychain -p "runner" "$KEYCHAIN_PATH"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "runner" "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           echo "$CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
-          security set-key-partition-list -S apple-tool:,apple: -s -k "runner" "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "$RUNNER_TEMP/certificate.p12"
 
       - name: Install provisioning profile
         env:
           PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
         run: |
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          echo "$PROFILE_BASE64" | base64 --decode > "$HOME/Library/MobileDevice/Provisioning Profiles/ui16.mobileprovision"
+          echo "$PROFILE_BASE64" | base64 --decode \
+            > "$HOME/Library/MobileDevice/Provisioning Profiles/ui16.mobileprovision"
 
       - name: Build signed IPA
         run: bash scripts/build-ipa.sh

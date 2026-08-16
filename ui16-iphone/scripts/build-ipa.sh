@@ -1,51 +1,102 @@
 #!/bin/bash
+# Build a signed .ipa of UI16 Control for a physical iPhone.
+#
+#   DEVELOPMENT_TEAM=ABCDE12345 bash scripts/build-ipa.sh
+#
+# Manual signing (when you want a specific profile):
+#   DEVELOPMENT_TEAM=ABCDE12345 PROVISIONING_PROFILE_SPECIFIER="My Profile" bash scripts/build-ipa.sh
+#
+# Output: build/UI16-Control.ipa
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+PROJECT="$ROOT/app/UI16Control.xcodeproj"
+SCHEME="UI16Control"
+BUNDLE_ID="com.marqueslab.ui16control"
+CONFIGURATION="${CONFIGURATION:-Release}"
 TEAM_ID="${DEVELOPMENT_TEAM:-}"
 PROFILE="${PROVISIONING_PROFILE_SPECIFIER:-}"
-CONFIGURATION="${CONFIGURATION:-Release}"
-ARCHIVE="$ROOT/build/UI16Phone.xcarchive"
-EXPORT="$ROOT/build/export"
+EXPORT_METHOD="${EXPORT_METHOD:-development}"
+
+ARCHIVE="$ROOT/build/UI16Control.xcarchive"
+EXPORT_DIR="$ROOT/build/export"
+
+echo "== UI16 Control — IPA =="
+echo "   projeto : $PROJECT"
+echo "   bundle  : $BUNDLE_ID"
+echo "   config  : $CONFIGURATION"
+
+if [[ -z "$TEAM_ID" ]]; then
+  cat >&2 <<'MSG'
+
+ERRO: defina DEVELOPMENT_TEAM com o seu Apple Team ID.
+
+Como descobrir o Team ID:
+  - Xcode > Settings > Accounts > selecione sua conta > o Team ID aparece na lista, ou
+  - https://developer.apple.com/account  (Membership details)
+
+Exemplo:
+  DEVELOPMENT_TEAM=ABCDE12345 bash scripts/build-ipa.sh
+MSG
+  exit 1
+fi
 
 rm -rf "$ROOT/build"
 mkdir -p "$ROOT/build"
 
-echo "== UI16 Control / iPhone IPA =="
-echo "Bundle: com.marqueslab.ui16control"
-
-a=( -scheme UI16Phone -packagePath "$ROOT" -configuration "$CONFIGURATION" -destination 'generic/platform=iOS' -archivePath "$ARCHIVE" )
-if [[ -n "$TEAM_ID" ]]; then a+=(DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic); fi
-if [[ -n "$PROFILE" ]]; then a+=(PROVISIONING_PROFILE_SPECIFIER="$PROFILE" CODE_SIGN_STYLE=Manual); fi
-xcodebuild archive "${a[@]}" -allowProvisioningUpdates
+args=(
+  -project "$PROJECT"
+  -scheme "$SCHEME"
+  -configuration "$CONFIGURATION"
+  -destination 'generic/platform=iOS'
+  -archivePath "$ARCHIVE"
+  DEVELOPMENT_TEAM="$TEAM_ID"
+  PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID"
+)
 
 if [[ -n "$PROFILE" ]]; then
-  cat > "$ROOT/build/ExportOptions.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>method</key><string>development</string>
-<key>signingStyle</key><string>manual</string>
-<key>destination</key><string>export</string>
-<key>teamID</key><string>$TEAM_ID</string>
-<key>provisioningProfiles</key><dict><key>com.marqueslab.ui16control</key><string>$PROFILE</string></dict>
-</dict></plist>
-PLIST
+  args+=(CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER="$PROFILE")
+  SIGNING_STYLE=manual
 else
-  cat > "$ROOT/build/ExportOptions.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0"><dict>
-<key>method</key><string>development</string>
-<key>signingStyle</key><string>automatic</string>
-<key>destination</key><string>export</string>
-<key>teamID</key><string>$TEAM_ID</string>
-</dict></plist>
-PLIST
+  args+=(CODE_SIGN_STYLE=Automatic)
+  SIGNING_STYLE=automatic
 fi
 
-xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$EXPORT" -exportOptionsPlist "$ROOT/build/ExportOptions.plist" -allowProvisioningUpdates
-IPA="$(find "$EXPORT" -maxdepth 1 -name '*.ipa' -print -quit)"
-[[ -n "$IPA" ]] || { echo 'IPA não foi gerado.'; exit 1; }
+echo "== 1/2 Archive =="
+xcodebuild archive "${args[@]}" -allowProvisioningUpdates
+
+echo "== 2/2 Export IPA =="
+{
+  echo '<?xml version="1.0" encoding="UTF-8"?>'
+  echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+  echo '<plist version="1.0"><dict>'
+  echo "<key>method</key><string>$EXPORT_METHOD</string>"
+  echo "<key>signingStyle</key><string>$SIGNING_STYLE</string>"
+  echo "<key>teamID</key><string>$TEAM_ID</string>"
+  echo '<key>destination</key><string>export</string>'
+  echo '<key>stripSwiftSymbols</key><true/>'
+  echo '<key>compileBitcode</key><false/>'
+  if [[ -n "$PROFILE" ]]; then
+    echo '<key>provisioningProfiles</key><dict>'
+    echo "<key>$BUNDLE_ID</key><string>$PROFILE</string>"
+    echo '</dict>'
+  fi
+  echo '</dict></plist>'
+} > "$ROOT/build/ExportOptions.plist"
+
+xcodebuild -exportArchive \
+  -archivePath "$ARCHIVE" \
+  -exportPath "$EXPORT_DIR" \
+  -exportOptionsPlist "$ROOT/build/ExportOptions.plist" \
+  -allowProvisioningUpdates
+
+IPA="$(find "$EXPORT_DIR" -maxdepth 1 -name '*.ipa' -print -quit)"
+if [[ -z "$IPA" ]]; then
+  echo "ERRO: nenhum .ipa foi gerado em $EXPORT_DIR" >&2
+  exit 1
+fi
+
 cp "$IPA" "$ROOT/build/UI16-Control.ipa"
+echo
 echo "IPA GERADO: $ROOT/build/UI16-Control.ipa"
+echo "Instale no iPhone com Xcode (Window > Devices and Simulators) ou Apple Configurator."
