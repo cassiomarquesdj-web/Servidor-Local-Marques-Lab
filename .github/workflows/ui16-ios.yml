@@ -1,0 +1,26 @@
+name: UI16 iPhone Build
+
+on:
+  push:
+    paths:
+      - 'ui16-iphone/**'
+      - '.github/workflows/ui16-ios.yml'
+  pull_request:
+    paths:
+      - 'ui16-iphone/**'
+      - '.github/workflows/ui16-ios.yml'
+
+jobs:
+  swift-package:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ui16-iphone
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build -v
+      - name: Test
+        run: swift test -v
