@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Marques Lab UI16</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.marqueslab.ui16</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Controlar a mesa Soundcraft Ui16 pela rede Wi-Fi local.</string>
+</dict>
+</plist>
