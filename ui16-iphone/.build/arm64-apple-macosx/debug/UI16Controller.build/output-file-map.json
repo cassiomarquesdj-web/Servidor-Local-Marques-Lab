@@ -30,6 +30,13 @@
     "swift-dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/VUDecoder.swiftdeps",
     "diagnostics": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/VUDecoder.dia"
   },
+  "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/CommandThrottle.swift": {
+    "dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/CommandThrottle.d",
+    "object": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/CommandThrottle.swift.o",
+    "swiftmodule": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/CommandThrottle~partial.swiftmodule",
+    "swift-dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/CommandThrottle.swiftdeps",
+    "diagnostics": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/CommandThrottle.dia"
+  },
   "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/UI16State.swift": {
     "dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/UI16State.d",
     "object": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/UI16State.swift.o",

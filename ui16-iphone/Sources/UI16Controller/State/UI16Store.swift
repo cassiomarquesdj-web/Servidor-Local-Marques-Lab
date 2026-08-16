@@ -10,7 +10,12 @@ public final class UI16Store: ObservableObject {
 
     private var socket: UI16Connection?
 
-    public init() {}
+    /// Coalesces continuous writes (faders, gain, pan, sends) so drags don't flood the mixer.
+    private let throttle = CommandThrottle()
+
+    public init() {
+        throttle.send = { [weak self] payload in self?.transmit(payload) }
+    }
 
     // MARK: Connection
 
@@ -43,7 +48,7 @@ public final class UI16Store: ObservableObject {
 
     public func setMasterLevel(_ value: Double) {
         state.master.level = clamp01(value)
-        send(UI16Message.setd(MasterAddress.mix, state.master.level))
+        sendContinuous(MasterAddress.mix, UI16Message.setd(MasterAddress.mix, state.master.level))
     }
     public func setMasterMute(_ muted: Bool) {
         state.master.muted = muted
@@ -51,7 +56,7 @@ public final class UI16Store: ObservableObject {
     }
     public func setMasterPan(_ value: Double) {
         state.master.pan = round3(clamp01(value))
-        send(UI16Message.setd(MasterAddress.pan, state.master.pan))
+        sendContinuous(MasterAddress.pan, UI16Message.setd(MasterAddress.pan, state.master.pan))
     }
     public func setMasterDim(_ dim: Bool) {
         state.master.dim = dim
@@ -60,7 +65,7 @@ public final class UI16Store: ObservableObject {
 
     public func setLevel(_ ref: ChannelRef, _ value: Double) {
         mutate(ref) { $0.level = clamp01(value) }
-        send(UI16Message.setd(UI16Key.mix(ref), clamp01(value)))
+        sendContinuous(UI16Key.mix(ref), UI16Message.setd(UI16Key.mix(ref), clamp01(value)))
     }
     public func setMute(_ ref: ChannelRef, _ muted: Bool) {
         mutate(ref) { $0.muted = muted }
@@ -73,11 +78,11 @@ public final class UI16Store: ObservableObject {
     public func setPan(_ ref: ChannelRef, _ value: Double) {
         let v = round3(clamp01(value))
         mutate(ref) { $0.pan = v }
-        send(UI16Message.setd(UI16Key.pan(ref), v))
+        sendContinuous(UI16Key.pan(ref), UI16Message.setd(UI16Key.pan(ref), v))
     }
     public func setGain(_ ref: ChannelRef, _ value: Double) {
         mutate(ref) { $0.gain = clamp01(value) }
-        send(UI16Message.setd(UI16Key.gain(ref), clamp01(value)))
+        sendContinuous(UI16Key.gain(ref), UI16Message.setd(UI16Key.gain(ref), clamp01(value)))
     }
     public func setPhantom(_ ref: ChannelRef, _ enabled: Bool) {
         mutate(ref) { $0.phantom = enabled }
@@ -92,7 +97,7 @@ public final class UI16Store: ObservableObject {
         let key = "\(bus.rawValue).\(busNumber - 1)"
         let v = clamp01(value)
         mutate(ref) { $0.sends[key] = v }
-        send(UI16Message.setd(UI16Key.sendLevel(ref, to: bus, busNumber), v))
+        sendContinuous(UI16Key.sendLevel(ref, to: bus, busNumber), UI16Message.setd(UI16Key.sendLevel(ref, to: bus, busNumber), v))
     }
     public func setSendPost(_ ref: ChannelRef, to bus: BusKind, _ busNumber: Int, _ post: Bool) {
         let key = "\(bus.rawValue).\(busNumber - 1)"
@@ -105,7 +110,7 @@ public final class UI16Store: ObservableObject {
     /// without the app inventing command names.
     public func sendRawNumber(_ path: String, _ value: Double) {
         state.raw[path] = .number(value)
-        send(UI16Message.setd(path, value))
+        sendContinuous(path, UI16Message.setd(path, value))
     }
     public func sendRawBool(_ path: String, _ value: Bool) {
         state.raw[path] = .number(value ? 1 : 0)
@@ -186,7 +191,17 @@ public final class UI16Store: ObservableObject {
 
     // MARK: Helpers
 
+    /// Continuous parameter write — coalesced (see `CommandThrottle`).
+    private func sendContinuous(_ key: String, _ payload: String) {
+        throttle.submit(key: key, payload: payload)
+    }
+
+    /// Discrete parameter write — always sent immediately, never delayed.
     private func send(_ payload: String) {
+        transmit(payload)
+    }
+
+    private func transmit(_ payload: String) {
         guard let socket else { return }
         Task { await socket.send(payload) }
     }

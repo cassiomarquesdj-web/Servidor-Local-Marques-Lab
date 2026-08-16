@@ -39,9 +39,13 @@ public actor UI16Connection {
     var onMessage: (@Sendable (String) -> Void)?
     var onStateChange: (@Sendable (State) -> Void)?
 
+    /// - Parameters:
+    ///   - host: mixer address. May include a port (`10.10.2.1:8080`), which wins over `port`.
+    ///   - port: port to use when `host` does not carry one. The mixer serves on 80.
     public init(host: String, port: Int = 80) {
-        self.host = host
-        self.port = port
+        let (h, p) = Self.splitHostPort(host, fallback: port)
+        self.host = h
+        self.port = p
         self.delegate = SocketDelegate()
         self.session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         self.delegate.owner = self
@@ -53,6 +57,22 @@ public actor UI16Connection {
     ) {
         self.onMessage = onMessage
         self.onStateChange = onStateChange
+    }
+
+    /// Split an `address` or `address:port` string. IPv6 literals in brackets are preserved.
+    public static func splitHostPort(_ raw: String, fallback: Int) -> (String, Int) {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        // Only treat a single trailing ":digits" as a port (avoids breaking IPv6).
+        if let colon = trimmed.lastIndex(of: ":"),
+           !trimmed.hasSuffix("]"),
+           trimmed.filter({ $0 == ":" }).count == 1 {
+            let hostPart = String(trimmed[trimmed.startIndex..<colon])
+            let portPart = String(trimmed[trimmed.index(after: colon)...])
+            if let p = Int(portPart), p > 0, p < 65536, !hostPart.isEmpty {
+                return (hostPart, p)
+            }
+        }
+        return (trimmed, fallback)
     }
 
     // MARK: Lifecycle

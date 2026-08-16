@@ -44,6 +44,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/CommandThrottle.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/UI16State.swift"
         },
         {
@@ -71,6 +75,7 @@
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/UI16Address.swift.o",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/UI16Message.swift.o",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/VUDecoder.swift.o",
+        "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/CommandThrottle.swift.o",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/UI16State.swift.o",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/UI16Store.swift.o",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/UI16Connection.swift.o"
@@ -144,6 +149,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/CommandThrottle.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/UI16State.swift.o"
         },
         {
@@ -165,6 +174,7 @@
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/Protocol/UI16Address.swift",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/Protocol/UI16Message.swift",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/Protocol/VUDecoder.swift",
+        "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/CommandThrottle.swift",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/UI16State.swift",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/UI16Store.swift",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/Transport/UI16Connection.swift"
@@ -278,6 +288,14 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/CommandThrottleTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/ConnectionTests.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/FaderMathTests.swift"
         },
         {
@@ -310,6 +328,8 @@
       "moduleOutputPath" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/Modules/UI16ControllerTests.swiftmodule",
       "objects" : [
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/AddressTests.swift.o",
+        "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/CommandThrottleTests.swift.o",
+        "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/ConnectionTests.swift.o",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/FaderMathTests.swift.o",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/MessageTests.swift.o",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/StoreTests.swift.o",
@@ -371,6 +391,14 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/CommandThrottleTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/ConnectionTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/FaderMathTests.swift.o"
         },
         {
@@ -393,6 +421,8 @@
       "prepareForIndexing" : false,
       "sources" : [
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/AddressTests.swift",
+        "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/CommandThrottleTests.swift",
+        "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/ConnectionTests.swift",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/FaderMathTests.swift",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/MessageTests.swift",
         "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/StoreTests.swift",
@@ -417,6 +447,7 @@
       "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/Protocol/UI16Address.swift",
       "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/Protocol/UI16Message.swift",
       "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/Protocol/VUDecoder.swift",
+      "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/CommandThrottle.swift",
       "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/UI16State.swift",
       "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/UI16Store.swift",
       "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/Transport/UI16Connection.swift",
@@ -540,6 +571,8 @@
       "ui16_iphone",
       "-c",
       "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/AddressTests.swift",
+      "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/CommandThrottleTests.swift",
+      "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/ConnectionTests.swift",
       "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/FaderMathTests.swift",
       "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/MessageTests.swift",
       "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/StoreTests.swift",
@@ -655,6 +688,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/CommandThrottle.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Sources/UI16Controller/State/UI16State.swift"
         },
         {
@@ -688,6 +725,10 @@
         {
           "kind" : "virtual",
           "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16Controller.build/CommandThrottle.swift.o"
         },
         {
           "kind" : "file",
@@ -727,6 +768,14 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/CommandThrottleTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/ConnectionTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/FaderMathTests.swift.o"
         },
         {
@@ -754,6 +803,14 @@
         {
           "kind" : "file",
           "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/AddressTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/CommandThrottleTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/ConnectionTests.swift"
         },
         {
           "kind" : "file",

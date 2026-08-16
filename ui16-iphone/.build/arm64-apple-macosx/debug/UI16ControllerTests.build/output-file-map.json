@@ -9,6 +9,20 @@
     "swift-dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/AddressTests.swiftdeps",
     "diagnostics": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/AddressTests.dia"
   },
+  "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/CommandThrottleTests.swift": {
+    "dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/CommandThrottleTests.d",
+    "object": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/CommandThrottleTests.swift.o",
+    "swiftmodule": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/CommandThrottleTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/CommandThrottleTests.swiftdeps",
+    "diagnostics": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/CommandThrottleTests.dia"
+  },
+  "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/ConnectionTests.swift": {
+    "dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/ConnectionTests.d",
+    "object": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/ConnectionTests.swift.o",
+    "swiftmodule": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/ConnectionTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/ConnectionTests.swiftdeps",
+    "diagnostics": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/ConnectionTests.dia"
+  },
   "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/Tests/FaderMathTests.swift": {
     "dependencies": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/FaderMathTests.d",
     "object": "/Users/cassiomarques/Documents/GitHub/Servidor-Local-Marques-Lab/ui16-iphone/.build/arm64-apple-macosx/debug/UI16ControllerTests.build/FaderMathTests.swift.o",
