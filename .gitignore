@@ -1,0 +1,28 @@
+# Build output
+build/
+DerivedData/
+*.xcarchive
+*.ipa
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+
+# Signing material — never commit these
+*.p12
+*.mobileprovision
+*.cer
+ExportOptions.plist
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc

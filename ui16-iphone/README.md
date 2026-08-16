@@ -1,75 +1,138 @@
 # UI16 Control — iPhone
 
-Controlador nativo para **Soundcraft Ui16**, otimizado para iPhone em modo retrato.
+Controlador nativo para **Soundcraft Ui16**, feito para ser operado com uma mão durante
+o evento. SwiftUI, iOS 17+, retrato, tema escuro.
 
-## Entregue
-
-- SwiftUI / iOS 17+
-- WebSocket local `ws://<IP>`
-- Keepalive `ALIVE` a cada 1 s
-- Reconexão automática
-- Faders Master + 16 entradas
-- Mute / Solo / Gain / Pan / Phantom / Phase / HPF
-- AUX 1–4
-- AUX / FX / Master dashboard
-- Estrutura para 4 FX, BPM e 6 parâmetros por FX
-- Decodificação do stream `VU2` em Base64
-- VU pré, pós e pós-fader para Input/Player/Line
-- VU estéreo para FX/Sub/Master
-- VU para AUX
-- Inspetor de métricas: todas as mensagens `SETD` recebidas ficam preservadas, inclusive parâmetros ainda sem controle dedicado na UI
-- Permissão de rede local do iOS
-- Script de geração de IPA: `scripts/build-ipa.sh`
-- GitHub Actions para build/test e geração manual de IPA assinado
-
-## Gerar IPA no seu Mac
-
-O IPA precisa ser assinado pela Apple. Com Xcode instalado e sua conta Apple configurada no Mac:
+## Gerar o IPA (é isso que você precisa fazer)
 
 ```bash
 cd ui16-iphone
-DEVELOPMENT_TEAM="SEU_TEAM_ID" bash scripts/build-ipa.sh
+DEVELOPMENT_TEAM=SEU_TEAM_ID bash scripts/build-ipa.sh
 ```
 
-O arquivo será criado em:
+Resultado: `ui16-iphone/build/UI16-Control.ipa`
 
-`ui16-iphone/build/UI16-Control.ipa`
+Para descobrir o Team ID: Xcode → Settings → Accounts → sua conta, ou
+[developer.apple.com/account](https://developer.apple.com/account) em *Membership details*.
 
-Para assinatura manual, informe também o nome do provisioning profile:
+Ou abra no Xcode e use Product → Archive:
 
 ```bash
-DEVELOPMENT_TEAM="SEU_TEAM_ID" PROVISIONING_PROFILE_SPECIFIER="SEU_PROFILE" bash scripts/build-ipa.sh
+open ui16-iphone/app/UI16Control.xcodeproj
 ```
 
-## Gerar IPA pelo GitHub Actions
+No Xcode, selecione o target **UI16Control** → aba *Signing & Capabilities* → marque
+*Automatically manage signing* e escolha seu Team. Depois é só Archive → Distribute App.
 
-O workflow `.github/workflows/ui16-ios.yml` tem uma execução manual chamada **ipa**. Para habilitá-la, crie estes GitHub Actions Secrets:
+## Instalar no iPhone
 
-- `DEVELOPMENT_TEAM` — Team ID da Apple Developer
-- `PROVISIONING_PROFILE_SPECIFIER` — nome do provisioning profile para `com.marqueslab.ui16control`
-- `APPLE_CERTIFICATE_BASE64` — arquivo `.p12` convertido para Base64
+1. Conecte o iPhone no Mac.
+2. Xcode → Window → *Devices and Simulators*.
+3. Arraste o `.ipa` para a lista *Installed Apps* (ou use Apple Configurator).
+4. No iPhone: Ajustes → Geral → *VPN e Gerenciamento de Dispositivo* → confie no seu
+   certificado de desenvolvedor.
+
+Na primeira execução o iOS pede permissão de **rede local** — é obrigatório aceitar,
+senão o app não enxerga a mesa.
+
+## Conectar na mesa
+
+1. iPhone e Ui16 na **mesma rede Wi-Fi**.
+2. Abra o app → ícone de engrenagem.
+3. Digite o IP da mesa, ou toque em um dos endereços padrão:
+   - `10.10.2.1` — Wi-Fi da própria Ui16
+   - `10.10.1.1` — alternativo
+   - `192.168.1.1` — rede cabeada/DHCP típica
+
+O IP também aparece no painel da própria mesa. Aceita `ip:porta` (ex.: `10.10.2.1:80`).
+
+## Como o app se organiza
+
+| Aba | O que faz |
+|---|---|
+| **MIXER** | Régua dos 16 canais com VU e mute individual, fader grande do canal selecionado, MUTE/SOLO, master com VU estéreo |
+| **CANAL** | Preamp (ganho em dB, phantom 48V), pan, sends AUX 1–6 e FX 1–4 com pre/post, e todos os parâmetros de processamento que a mesa reportar |
+| **AUX/FX** | Barramentos AUX, FX e SUB com fader, mute e meter |
+| **DIAG** | Contadores ao vivo, todos os VU (pre/post/pós-fader, estéreo, aux, fx, master) e busca em todas as chaves recebidas |
+
+Decisões de operação ao vivo:
+
+- **Fader com arrasto relativo** — encostar no fader não faz o nível pular para o dedo.
+- **Mute por canal na régua**, sem precisar selecionar o canal antes.
+- **Perda de conexão em faixa vermelha**, não em detalhe sutil.
+- **Escritas contínuas agrupadas** (janela de 40 ms) com valor final garantido, para não
+  inundar o Wi-Fi durante um arrasto.
+- **Haptics** confirmam cada comando quando você não está olhando a tela.
+
+## Desenvolvimento
+
+```bash
+bash scripts/test.sh              # testes da biblioteca (42 testes)
+bash scripts/build.sh             # compila para simulador
+bash scripts/build.sh device      # compila para iPhone
+bash scripts/archive.sh           # archive (sem assinar se não houver team)
+bash scripts/build-ipa.sh         # IPA assinado
+```
+
+### Testar sem a mesa
+
+Há um mock que fala o protocolo real da Ui16:
+
+```bash
+python3 tools/mock-ui16.py --port 8080
+```
+
+Ele envia estado completo, VU a 20 Hz e imprime cada comando que o app escreve — útil para
+conferir endereços. No simulador, aponte o app para `127.0.0.1:8080`; num iPhone real,
+use o IP do seu Mac.
+
+### Estrutura
+
+```
+Sources/UI16Controller/   biblioteca pura (protocolo + estado), sem SwiftUI — testável no CI
+app/UI16Control/          app SwiftUI
+app/UI16Control.xcodeproj projeto Xcode
+Tests/                    testes da biblioteca
+tools/mock-ui16.py        mesa simulada
+docs/protocol.md          protocolo: o que está confirmado e o que falta
+```
+
+## Protocolo
+
+O app fala o protocolo real da Ui Series: WebSocket em `ws://<ip>`, frames `3:::`,
+keepalive `ALIVE`, estado em `SETD` (números) e `SETS` (texto), VU em `VU2` binário.
+
+**Importante:** a Ui16 não tem 16 canais mono — são 12 entradas mono (`i`), 2 de linha
+(`l`) e 2 players (`p`), além de 4 FX, 4 subs e 6 AUX.
+
+Cada comando usado, sua fonte de confirmação e as pendências estão em
+[`docs/protocol.md`](docs/protocol.md).
+
+## Limitações honestas
+
+- **EQ, Gate, Compressor, Phase e HPF** não têm endereço de escrita publicamente
+  confirmado. O app **não inventa** comandos: ele lista os parâmetros reais que a mesa
+  reportar e permite editá-los pelo endereço verdadeiro. Ao conectar na Ui16, esses
+  controles aparecem sozinhos.
+- **Cenas/presets** ainda não implementados — dependem de capturar as mensagens reais.
+- Tudo foi validado contra o mock e o simulador. **A confirmação final de cada escrita
+  depende da Ui16 física.**
+
+## Gerar IPA pelo GitHub Actions (opcional)
+
+O workflow `.github/workflows/ui16-ios.yml` testa a biblioteca e compila o app a cada
+push. Para gerar IPA assinado (**Actions → UI16 iPhone Build → Run workflow**), crie os
+secrets:
+
+- `DEVELOPMENT_TEAM` — Team ID
+- `PROVISIONING_PROFILE_SPECIFIER` — nome do profile para `com.marqueslab.ui16control`
+- `APPLE_CERTIFICATE_BASE64` — `.p12` em Base64
 - `APPLE_CERTIFICATE_PASSWORD` — senha do `.p12`
-- `APPLE_PROVISIONING_PROFILE_BASE64` — arquivo `.mobileprovision` convertido para Base64
-
-Depois, no GitHub: **Actions → UI16 iPhone Build → Run workflow**. O resultado aparece como artifact **UI16-Control-iPhone** contendo `UI16-Control.ipa`.
-
-### Preparar os arquivos Base64 no Mac
+- `APPLE_PROVISIONING_PROFILE_BASE64` — `.mobileprovision` em Base64
 
 ```bash
 base64 -i AppleDevelopment.p12 | pbcopy
 base64 -i UI16Control.mobileprovision | pbcopy
 ```
 
-Cole cada resultado no Secret correspondente. Nunca coloque certificado, senha ou provisioning profile no código do projeto.
-
-## Instalação no iPhone
-
-Depois de gerar o IPA assinado com perfil de desenvolvimento, ele pode ser instalado no iPhone associado ao perfil usando Xcode/Apple Configurator ou um fluxo de distribuição adequado à sua conta Apple.
-
-## Protocolo
-
-A Ui Series usa WebSocket local para comunicação. O estado é recebido em mensagens `SETD^key^value`; o stream de VU usa `VU2^<base64>`.
-
-## Validação física
-
-O código está preparado para ser testado na Ui16 física. A confirmação final de cada comando de escrita depende da resposta da mesa real; comandos ainda não validados em hardware não devem ser tratados como comprovados.
+Nunca coloque certificado, senha ou profile no código.
