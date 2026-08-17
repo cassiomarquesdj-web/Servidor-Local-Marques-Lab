@@ -36,7 +36,12 @@ public actor UI16Connection {
     private var keepAliveTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
 
-    var onMessage: (@Sendable (String) -> Void)?
+    /// Delivers a whole frame's payloads at once.
+    ///
+    /// Deliberately a batch, not one call per payload: the mixer streams VU at ~20 Hz and
+    /// dumps hundreds of state messages on connect. Hopping to the main actor per message
+    /// floods it and starves the UI — the same failure mode the audio meter tap had.
+    var onMessages: (@Sendable ([String]) -> Void)?
     var onStateChange: (@Sendable (State) -> Void)?
 
     /// - Parameters:
@@ -52,10 +57,10 @@ public actor UI16Connection {
     }
 
     public func setCallbacks(
-        onMessage: @escaping @Sendable (String) -> Void,
+        onMessages: @escaping @Sendable ([String]) -> Void,
         onStateChange: @escaping @Sendable (State) -> Void
     ) {
-        self.onMessage = onMessage
+        self.onMessages = onMessages
         self.onStateChange = onStateChange
     }
 
@@ -155,9 +160,9 @@ public actor UI16Connection {
     }
 
     private func dispatch(_ frame: String) {
-        for payload in UI16Message.unframe(frame) {
-            onMessage?(payload)
-        }
+        let payloads = UI16Message.unframe(frame)
+        guard !payloads.isEmpty else { return }
+        onMessages?(payloads)
     }
 
     private func startKeepAlive() {

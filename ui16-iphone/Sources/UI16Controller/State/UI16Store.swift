@@ -25,8 +25,12 @@ public final class UI16Store: ObservableObject {
         self.socket = socket
         Task {
             await socket.setCallbacks(
-                onMessage: { [weak self] payload in
-                    Task { @MainActor in self?.apply(payload) }
+                onMessages: { [weak self] payloads in
+                    // One hop to the main actor per frame, not per message.
+                    Task { @MainActor in
+                        guard let self else { return }
+                        for payload in payloads { self.apply(payload) }
+                    }
                 },
                 onStateChange: { [weak self] newState in
                     Task { @MainActor in

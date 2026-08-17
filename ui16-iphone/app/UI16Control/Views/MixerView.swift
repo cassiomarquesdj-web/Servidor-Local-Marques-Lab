@@ -11,6 +11,9 @@ struct MixerView: View {
     @Binding var host: String
     /// Lets the shell switch back to Paredão from the header.
     var onExitToParedao: (() -> Void)? = nil
+    /// Now-playing strip, injected by the shell so it sits above this view's tab bar
+    /// instead of below it.
+    var nowPlaying: AnyView? = nil
 
     @State private var selected = ChannelRef(.input, 1)
     @State private var tab: Tab = .mixer
@@ -69,6 +72,8 @@ struct MixerView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if let nowPlaying { nowPlaying }
 
             TechTabBar(tab: $tab)
         }

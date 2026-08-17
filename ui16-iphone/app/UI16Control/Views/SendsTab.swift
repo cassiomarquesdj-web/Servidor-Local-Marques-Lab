@@ -53,26 +53,78 @@ struct SendsTab: View {
         let post = strip.sendPost[key] ?? false
 
         return VStack(spacing: 4) {
+            // The knob is the level control: drag it. Tapping the label opens the detail.
             Knob(value: Binding(get: { value },
                                 set: { store.setSend(ref, to: bus, number, $0) }),
                  tint: tint, size: 50)
-            Text("\(bus == .aux ? "AUX" : "FX") \(number)")
-                .font(Theme.label).foregroundStyle(Theme.textDim)
+
+            Button {
+                detail = SendTarget(bus: bus, number: number)
+                hapticTap(.light)
+            } label: {
+                HStack(spacing: 3) {
+                    Text("\(bus == .aux ? "AUX" : "FX") \(number)")
+                        .font(Theme.label)
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 8))
+                }
+                .foregroundStyle(Theme.textDim)
+            }
+            .buttonStyle(.plain)
+
             Text(FaderMath.dbString(value))
                 .font(Theme.readout(10))
                 .foregroundStyle(tint)
                 .lineLimit(1).minimumScaleFactor(0.7)
+
             if bus == .aux {
-                Text(post ? "POST" : "PRE")
-                    .font(.system(size: 8, weight: .heavy))
-                    .foregroundStyle(post ? Theme.accent : Theme.textFaint)
+                // PRE/POST is a one-tap switch, not a caption. It decides whether the
+                // musician's monitor follows the channel fader, so it has to be both
+                // obvious and reachable without a hidden gesture.
+                PrePostToggle(post: post, enabled: store.state.connected) {
+                    store.setSendPost(ref, to: bus, number, !post)
+                }
             }
         }
-        .contentShape(Rectangle())
-        .onLongPressGesture {
-            detail = SendTarget(bus: bus, number: number)
+    }
+}
+
+/// PRE/POST switch: shows both options, lights the active one, toggles on a normal tap.
+struct PrePostToggle: View {
+    let post: Bool
+    var enabled: Bool = true
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            guard enabled else { return }
+            action()
             hapticTap()
+        } label: {
+            HStack(spacing: 0) {
+                segment("PRE", active: !post)
+                segment("POST", active: post)
+            }
+            .frame(height: 26)
+            .background(Theme.well)
+            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(Theme.stroke, lineWidth: 1)
+            )
         }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.45)
+        .animation(.easeOut(duration: 0.12), value: post)
+    }
+
+    private func segment(_ text: String, active: Bool) -> some View {
+        Text(text)
+            .font(.system(size: 8.5, weight: .heavy))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .foregroundStyle(active ? .black : Theme.textFaint)
+            .background(active ? Theme.accent : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     }
 }
 
@@ -109,12 +161,15 @@ struct SendDetailSheet: View {
                             .frame(height: 30)
 
                         if bus == .aux {
-                            ConsoleButton(title: post ? "POST-FADER" : "PRE-FADER",
-                                          subtitle: post ? "segue o fader do canal"
-                                                         : "independente do fader",
-                                          isOn: post, onColor: Theme.accent,
-                                          enabled: store.state.connected) {
-                                store.setSendPost(ref, to: bus, number, !post)
+                            VStack(spacing: 6) {
+                                PrePostToggle(post: post, enabled: store.state.connected) {
+                                    store.setSendPost(ref, to: bus, number, !post)
+                                }
+                                .frame(height: 46)
+                                Text(post ? "O envio segue o fader do canal."
+                                          : "O envio é independente do fader do canal.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.textDim)
                             }
                         }
                     }

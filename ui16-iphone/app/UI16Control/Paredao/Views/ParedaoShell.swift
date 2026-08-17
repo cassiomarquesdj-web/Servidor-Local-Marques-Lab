@@ -52,15 +52,20 @@ struct ParedaoShell: View {
                     EQPage(paredao: paredao)
                 case .ui16:
                     // The technical console, with a way back to Paredão in its header.
+                    // The now-playing strip is handed to it so it renders above the
+                    // console's own tab bar.
                     MixerView(store: mixer, host: $host,
-                              onExitToParedao: { mode = .paredao })
+                              onExitToParedao: { mode = .paredao },
+                              nowPlaying: paredao.player.current == nil ? nil
+                                : AnyView(NowPlayingBar(paredao: paredao) { mode = .player }))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // A now-playing strip follows the operator everywhere except the full player,
             // so the music is always one tap away — including inside the Ui16 controller.
-            if mode != .player, paredao.player.current != nil {
+            // In the console the strip is rendered inside MixerView (above its tab bar).
+            if mode != .player, mode != .ui16, paredao.player.current != nil {
                 NowPlayingBar(paredao: paredao) { mode = .player }
             }
 

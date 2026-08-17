@@ -14,6 +14,7 @@ struct ParedaoHome: View {
     var onOpenEQ: (() -> Void)? = nil
 
     @State private var showMonitor = false
+    @State private var selectedBand = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -227,6 +228,10 @@ struct ParedaoHome: View {
         }
     }
 
+    private func freqText(_ hz: Double) -> String {
+        hz >= 1_000 ? String(format: "%.1fk", hz / 1_000) : String(format: "%.0f", hz)
+    }
+
     private var anySolo: Bool { mixer.state.strips.values.contains { $0.solo } }
 
     private func clearSolos() {
@@ -235,19 +240,70 @@ struct ParedaoHome: View {
         }
     }
 
-    // MARK: EQ summary
+    // MARK: EQ
 
+    /// The EQ block is extracted and `Equatable` on purpose.
+    ///
+    /// The dashboard re-renders 20 times a second because the meters do. The EQ depends
+    /// only on `EQSettings` and the selected band, so leaving it inline made SwiftUI
+    /// rebuild ~20 extra view nodes per tick for a curve that had not changed — that alone
+    /// doubled CPU. Isolating it lets SwiftUI skip it entirely between EQ edits.
     private var eqSummary: some View {
-        let eq = paredao.player.eq
+        ParedaoEQBlock(
+            eq: paredao.player.eq,
+            selectedBand: $selectedBand,
+            onBandChange: { index, freq, gain in
+                paredao.player.updateEQ {
+                    $0.setFrequency(freq, forBandAt: index)
+                    $0.setGain(gain, forBandAt: index)
+                }
+            },
+            onGain: { gain in
+                paredao.player.updateEQ { $0.setGain(gain, forBandAt: selectedBand) }
+            },
+            onToggleBypass: { paredao.player.updateEQ { $0.bypassed.toggle() } },
+            onFlat: {
+                paredao.player.resetEQ()
+                selectedBand = 0
+            },
+            onPreset: { paredao.player.applyEQPreset($0) },
+            onOpenFull: { onOpenEQ?() }
+        )
+        .equatable()
+    }
+}
+
+/// A working EQ on the dashboard, not a preview.
+///
+/// Reaching for the EQ during a set should not cost a screen change: the curve is
+/// draggable here, band values are live, and bypass / flat / presets are one tap away.
+/// The full page stays for fine work (Q, exact frequency, per-band bypass).
+struct ParedaoEQBlock: View, Equatable {
+    let eq: EQSettings
+    @Binding var selectedBand: Int
+    let onBandChange: (Int, Double, Double) -> Void
+    let onGain: (Double) -> Void
+    let onToggleBypass: () -> Void
+    let onFlat: () -> Void
+    let onPreset: (EQPreset) -> Void
+    let onOpenFull: () -> Void
+
+    /// Closures are ignored: only the data that can change the pixels is compared.
+    static func == (a: ParedaoEQBlock, b: ParedaoEQBlock) -> Bool {
+        a.eq == b.eq && a.selectedBand == b.selectedBand
+    }
+
+    var body: some View {
+        let band = eq.bands.indices.contains(selectedBand) ? eq.bands[selectedBand] : eq.bands[0]
+
         return SectionPanel(title: "EQUALIZADOR DO PLAYER",
                             accessory: AnyView(
                                 Button {
-                                    onOpenEQ?()
+                                    onOpenFull()
                                     hapticTap(.light)
                                 } label: {
                                     HStack(spacing: 4) {
-                                        Text(eq.presetName.isEmpty ? "AJUSTADO" : eq.presetName)
-                                            .font(.system(size: 10, weight: .heavy))
+                                        Text("AJUSTE FINO").font(.system(size: 10, weight: .heavy))
                                         Image(systemName: "chevron.right")
                                             .font(.system(size: 9, weight: .heavy))
                                     }
@@ -256,30 +312,81 @@ struct ParedaoHome: View {
                                 .buttonStyle(.plain)
                             ),
                             padding: 10) {
-            VStack(spacing: 8) {
+            VStack(spacing: 9) {
                 EQCurveView(settings: eq,
-                            selectedBand: .constant(-1),
-                            interactive: false,
-                            onDrag: { _, _, _ in })
+                            selectedBand: $selectedBand,
+                            onDrag: onBandChange)
                     .equatable()
-                    .frame(height: 86)
+                    .frame(height: 150)
 
-                HStack(spacing: 5) {
-                    ForEach(Array(eq.bands.enumerated()), id: \.element.id) { _, band in
-                        VStack(spacing: 1) {
-                            Text(band.name)
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(Theme.textFaint)
-                                .lineLimit(1).minimumScaleFactor(0.6)
-                            Text(String(format: "%+.1f", band.gain))
-                                .font(Theme.readout(11))
-                                .foregroundStyle(band.gain == 0 ? Theme.textDim : Theme.accent)
+                // Band readouts double as the band selector.
+                HStack(spacing: 4) {
+                    ForEach(Array(eq.bands.enumerated()), id: \.element.id) { index, b in
+                        Button {
+                            selectedBand = index
+                            hapticTap(.light)
+                        } label: {
+                            VStack(spacing: 1) {
+                                Text(b.name)
+                                    .font(.system(size: 8, weight: .bold))
+                                    .lineLimit(1).minimumScaleFactor(0.6)
+                                Text(String(format: "%+.1f", b.gain))
+                                    .font(Theme.readout(12))
+                                Text(Self.freqText(b.frequency))
+                                    .font(.system(size: 7.5, design: .monospaced))
+                                    .opacity(0.75)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 46)
+                            .foregroundStyle(index == selectedBand ? .black
+                                             : (b.bypassed ? Theme.textFaint : Theme.text))
+                            .background(index == selectedBand ? Theme.accent : Theme.surfaceHigh)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         }
-                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // Gain of the selected band, so the curve can be ridden without dragging
+                // a small handle mid-show.
+                ParamSlider(title: "GANHO · \(band.name)",
+                            value: Binding(get: { band.gain }, set: onGain),
+                            range: EQBand.gainRange,
+                            readout: String(format: "%+.1f dB", band.gain),
+                            bipolar: true)
+
+                HStack(spacing: 6) {
+                    ConsoleButton(title: eq.bypassed ? "BYPASS" : "ATIVO",
+                                  isOn: !eq.bypassed, onColor: Theme.ok,
+                                  height: 42, compact: true, action: onToggleBypass)
+                    ConsoleButton(title: "FLAT", isOn: false, onColor: Theme.accent,
+                                  height: 42, compact: true, action: onFlat)
+                    Menu {
+                        ForEach(EQPreset.builtIn) { preset in
+                            Button(preset.name) { onPreset(preset) }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(eq.presetName.isEmpty ? "AJUSTADO" : eq.presetName)
+                                .font(.system(size: 11, weight: .heavy))
+                                .lineLimit(1).minimumScaleFactor(0.7)
+                            Image(systemName: "chevron.down").font(.system(size: 9, weight: .heavy))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 42)
+                        .foregroundStyle(Theme.text)
+                        .background(Theme.surfaceHigh)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusSmall, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.radiusSmall, style: .continuous)
+                                .stroke(Theme.stroke, lineWidth: 1)
+                        )
                     }
                 }
             }
         }
+    }
+
+    static func freqText(_ hz: Double) -> String {
+        hz >= 1_000 ? String(format: "%.1fk", hz / 1_000) : String(format: "%.0f", hz)
     }
 }
 
