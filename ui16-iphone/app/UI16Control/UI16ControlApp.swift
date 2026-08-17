@@ -3,40 +3,52 @@ import UI16Controller
 
 @main
 struct UI16ControlApp: App {
-    @StateObject private var store = UI16Store()
+    @StateObject private var mixer = UI16Store()
+    @StateObject private var paredao: ParedaoStore
     @AppStorage("ui16.host") private var host = "10.10.2.1"
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        let store = UI16Store()
+        _mixer = StateObject(wrappedValue: store)
+        _paredao = StateObject(wrappedValue: ParedaoStore(mixer: store))
+    }
+
     var body: some Scene {
         WindowGroup {
-            RootView(store: store, host: $host)
+            RootView(mixer: mixer, paredao: paredao, host: $host)
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
-                .persistentSystemOverlays(.hidden)
         }
         .onChange(of: scenePhase) { _, phase in
-            // Reconnect on foreground; iOS suspends sockets in the background.
             switch phase {
-            case .active: store.connect(host: host)
-            case .background: store.disconnect()
-            default: break
+            case .active:
+                // Reconnect to the mixer on foreground; iOS suspends sockets in the
+                // background. Audio is unaffected — the session keeps playing.
+                mixer.connect(host: host)
+            case .background:
+                mixer.disconnect()
+                paredao.saveNow()
+            default:
+                break
             }
         }
     }
 }
 
 struct RootView: View {
-    @ObservedObject var store: UI16Store
+    @ObservedObject var mixer: UI16Store
+    @ObservedObject var paredao: ParedaoStore
     @Binding var host: String
 
     var body: some View {
-        MixerView(store: store, host: $host)
+        ParedaoShell(paredao: paredao, mixer: mixer, host: $host)
             .task {
-                // Keep the screen awake — the operator needs the console visible mid-show.
+                // Keep the screen awake — the console must stay visible mid-show.
                 #if canImport(UIKit)
                 UIApplication.shared.isIdleTimerDisabled = true
                 #endif
-                store.connect(host: host)
+                mixer.connect(host: host)
             }
     }
 }

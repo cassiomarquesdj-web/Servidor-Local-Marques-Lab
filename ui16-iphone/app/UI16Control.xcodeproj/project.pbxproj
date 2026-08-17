@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A1000000000000000000B001 /* UI16Controller in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000C001 /* UI16Controller */; };
+		A1000000000000000000B002 /* ParedaoCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000C003 /* ParedaoCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,6 +30,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000000000000000000B001 /* UI16Controller in Frameworks */,
+				A1000000000000000000B002 /* ParedaoCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -73,6 +75,7 @@
 			name = UI16Control;
 			packageProductDependencies = (
 				A1000000000000000000C001 /* UI16Controller */,
+				A1000000000000000000C003 /* ParedaoCore */,
 			);
 			productName = UI16Control;
 			productReference = A1000000000000000000D001 /* UI16 Control.app */;
@@ -265,6 +268,10 @@
 		A1000000000000000000C001 /* UI16Controller */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = UI16Controller;
+		};
+		A1000000000000000000C003 /* ParedaoCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ParedaoCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

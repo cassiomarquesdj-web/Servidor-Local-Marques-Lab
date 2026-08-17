@@ -46,7 +46,29 @@ senão o app não enxerga a mesa.
 
 O IP também aparece no painel da própria mesa. Aceita `ip:porta` (ex.: `10.10.2.1:80`).
 
-## Como o app se organiza
+## Dois modos no mesmo app
+
+A navegação inferior tem cinco destinos: **PAREDÃO · PLAYER · BIBLIOTECA · EQ · UI16**.
+O controlador técnico da Ui16 continua inteiro na aba UI16 — o Modo Paredão foi somado,
+não substituiu nada. **A música não para ao trocar de aba**, inclusive ao entrar na Ui16.
+
+### Modo Paredão
+
+Player + biblioteca + playlist + EQ + phase + master, para operar o som do evento pelo
+iPhone. Detalhes, decisões e limitações em [`docs/paredao.md`](docs/paredao.md).
+
+Onde cada coisa é processada:
+
+- **EQ de 5 bandas: no iPhone**, não na mesa (os endereços de EQ da Ui16 não são
+  confirmados — o app não finge que a mesa processa).
+- **Master, DIM, solo, fone e VU: na Ui16.**
+- **Phase da mesa:** o app **descobre o endereço real no estado que a Ui16 envia**. Enquanto
+  não aparecer, não transmite nada e diz isso na tela.
+
+Formatos: MP3, WAV, AIFF, M4A/AAC, ALAC, CAF e FLAC. As músicas ficam onde estão —
+importe uma pasta pelo Files e o app guarda um bookmark, sem copiar nada.
+
+### Modo UI16 (controlador técnico)
 
 | Aba | O que faz |
 |---|---|
@@ -68,7 +90,7 @@ Decisões de operação ao vivo:
 ## Desenvolvimento
 
 ```bash
-bash scripts/test.sh              # testes da biblioteca (50 testes)
+bash scripts/test.sh              # testes das bibliotecas (172 testes)
 bash scripts/build.sh             # compila para simulador
 bash scripts/build.sh device      # compila para iPhone
 bash scripts/archive.sh           # archive (sem assinar se não houver team)
