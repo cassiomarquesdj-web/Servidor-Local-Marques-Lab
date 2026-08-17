@@ -56,7 +56,7 @@ struct EQPage: View {
                            in: -24...12)
                         .tint(Theme.accent)
                     Text(String(format: "%+.1f dB", eq.preamp))
-                        .font(Theme.value).foregroundStyle(Theme.accent)
+                        .font(Theme.readout(12)).foregroundStyle(Theme.accent)
                         .frame(width: 74, alignment: .trailing)
                 }
             }
@@ -76,6 +76,7 @@ struct EQPage: View {
                                     $0.setGain(gain, forBandAt: index)
                                 }
                             })
+                    .equatable()
                     .frame(height: 210)
 
                 HStack {
@@ -151,7 +152,7 @@ struct EQPage: View {
                     HStack {
                         Text("FREQUÊNCIA").font(Theme.label).foregroundStyle(Theme.textDim)
                         Spacer()
-                        Text(freqText(band.frequency)).font(Theme.value).foregroundStyle(Theme.accent)
+                        Text(freqText(band.frequency)).font(Theme.readout(12)).foregroundStyle(Theme.accent)
                     }
                     Slider(value: Binding(
                         get: { logPosition(band.frequency) },
@@ -190,7 +191,7 @@ struct EQPage: View {
             HStack {
                 Text(title).font(Theme.label).foregroundStyle(Theme.textDim)
                 Spacer()
-                Text(text).font(Theme.value).foregroundStyle(Theme.accent)
+                Text(text).font(Theme.readout(12)).foregroundStyle(Theme.accent)
             }
             Slider(value: Binding(get: { value }, set: onChange), in: range)
                 .tint(Theme.accent)
@@ -257,9 +258,18 @@ struct EQPage: View {
 }
 
 /// The EQ curve with draggable band handles.
-struct EQCurveView: View {
+/// Equatable so SwiftUI can skip re-evaluating it when unrelated state (meters, transport)
+/// publishes. Recomputing the 120-point biquad response 20 times a second was burning CPU
+/// for a curve that had not changed.
+struct EQCurveView: View, Equatable {
+    static func == (a: EQCurveView, b: EQCurveView) -> Bool {
+        a.settings == b.settings && a.selectedBand == b.selectedBand && a.interactive == b.interactive
+    }
+
     let settings: EQSettings
     @Binding var selectedBand: Int
+    /// When false the curve is a read-only summary (used on the Paredão dashboard).
+    var interactive: Bool = true
     /// (band index, new frequency, new gain)
     let onDrag: (Int, Double, Double) -> Void
 
@@ -301,7 +311,7 @@ struct EQCurveView: View {
                 .fill(Theme.accent.opacity(settings.bypassed ? 0.04 : 0.16))
 
                 // Draggable handles.
-                ForEach(Array(settings.bands.enumerated()), id: \.element.id) { index, band in
+                ForEach(interactive ? Array(settings.bands.enumerated()) : [], id: \.element.id) { index, band in
                     let x = normalized(frequency: band.frequency) * w
                     let y = yFor(db: band.gain, height: h)
                     Circle()

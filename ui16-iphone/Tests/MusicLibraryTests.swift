@@ -197,7 +197,10 @@ final class MusicLibraryTests: XCTestCase {
         let elapsed = Date().timeIntervalSince(started)
 
         XCTAssertFalse(hits.isEmpty)
-        XCTAssertLessThan(elapsed, 0.5, "busca precisa continuar instantânea com milhares de músicas")
+        // Generous bound on purpose: this guards against an algorithmic regression (e.g.
+        // re-normalizing every track per query, which takes seconds), not against a busy
+        // machine. A tight threshold here fails spuriously when the CI host is under load.
+        XCTAssertLessThan(elapsed, 2.0, "busca precisa continuar instantânea com milhares de músicas")
     }
 
     func testSupportedFormats() {

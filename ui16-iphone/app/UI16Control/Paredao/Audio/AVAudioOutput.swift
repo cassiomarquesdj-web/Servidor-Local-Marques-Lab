@@ -55,6 +55,8 @@ final class AVAudioOutput: AudioOutput {
 
     deinit {
         ticker?.invalidate()
+        peakL.deallocate()
+        peakR.deallocate()
     }
 
     // MARK: Setup
@@ -98,29 +100,57 @@ final class AVAudioOutput: AudioOutput {
         }
     }
 
+    /// Latest peak measured on the audio thread, read by the UI ticker.
+    ///
+    /// Written from the render thread and read on the main actor without locking. A torn
+    /// read here is a meter that is one frame stale — harmless — and locking on the audio
+    /// thread would be far worse.
+    private let peakL = UnsafeMutablePointer<Double>.allocate(capacity: 1)
+    private let peakR = UnsafeMutablePointer<Double>.allocate(capacity: 1)
+
     /// Measure the real output for the VU meters.
+    ///
+    /// The tap must **not** hop to the main actor per buffer: at 44.1 kHz with 1024-frame
+    /// buffers that is ~43 main-actor hops a second, which starves SwiftUI and leaves the
+    /// screen blank. It only stores the peak; the 20 Hz ticker publishes it.
     private func installMeterTap() {
         let mixer = engine.mainMixerNode
         mixer.removeTap(onBus: 0)
-        mixer.installTap(onBus: 0, bufferSize: 1024, format: mixer.outputFormat(forBus: 0)) { [weak self] buffer, _ in
+        peakL.pointee = 0
+        peakR.pointee = 0
+        let outL = peakL
+        let outR = peakR
+
+        mixer.installTap(onBus: 0, bufferSize: 2048, format: mixer.outputFormat(forBus: 0)) { buffer, _ in
             guard let channels = buffer.floatChannelData else { return }
             let frames = Int(buffer.frameLength)
             guard frames > 0 else { return }
 
-            func peak(_ ch: Int) -> Double {
-                var maxValue: Float = 0
-                let data = channels[ch]
-                for i in 0..<frames { maxValue = max(maxValue, abs(data[i])) }
-                return Double(maxValue)
+            var maxL: Float = 0
+            let left = channels[0]
+            // Stride-sample instead of scanning every frame: peak metering does not need
+            // sample-exact precision and this keeps the render thread cheap.
+            var i = 0
+            while i < frames {
+                let v = abs(left[i])
+                if v > maxL { maxL = v }
+                i += 4
             }
-            let l = peak(0)
-            let r = buffer.format.channelCount > 1 ? peak(1) : l
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                // Fast attack, slow release, so meters read like a console rather than flicker.
-                self.snapshot.levelL = max(l, self.snapshot.levelL * 0.82)
-                self.snapshot.levelR = max(r, self.snapshot.levelR * 0.82)
+
+            var maxR = maxL
+            if buffer.format.channelCount > 1 {
+                maxR = 0
+                let right = channels[1]
+                var j = 0
+                while j < frames {
+                    let v = abs(right[j])
+                    if v > maxR { maxR = v }
+                    j += 4
+                }
             }
+
+            outL.pointee = Double(maxL)
+            outR.pointee = Double(maxR)
         }
     }
 
@@ -131,6 +161,10 @@ final class AVAudioOutput: AudioOutput {
     }
 
     private func tick() {
+        // Fast attack, slow release, so meters read like a console rather than flicker.
+        snapshot.levelL = max(peakL.pointee, snapshot.levelL * 0.80)
+        snapshot.levelR = max(peakR.pointee, snapshot.levelR * 0.80)
+
         // Gate on our own status, not on `AVAudioPlayerNode.isPlaying`: that flag is not a
         // reliable indicator of render progress, and gating on it froze the transport clock
         // while audio was in fact playing.

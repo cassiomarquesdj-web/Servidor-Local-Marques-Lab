@@ -150,7 +150,7 @@ struct PlayerPage: View {
                     Text("VOLUME DO PLAYER").font(Theme.label)
                     Spacer()
                     Text("\(Int(player.snapshot.volume * 100))%")
-                        .font(Theme.value).foregroundStyle(Theme.accent)
+                        .font(Theme.readout(12)).foregroundStyle(Theme.accent)
                 }
                 .foregroundStyle(Theme.textDim)
                 Slider(value: Binding(get: { player.snapshot.volume },

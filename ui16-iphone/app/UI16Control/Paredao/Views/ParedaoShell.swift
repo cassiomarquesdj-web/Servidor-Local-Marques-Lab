@@ -51,8 +51,9 @@ struct ParedaoShell: View {
                 case .eq:
                     EQPage(paredao: paredao)
                 case .ui16:
-                    // The original technical controller, untouched.
-                    MixerView(store: mixer, host: $host)
+                    // The technical console, with a way back to Paredão in its header.
+                    MixerView(store: mixer, host: $host,
+                              onExitToParedao: { mode = .paredao })
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -63,7 +64,12 @@ struct ParedaoShell: View {
                 NowPlayingBar(paredao: paredao) { mode = .player }
             }
 
-            ModeBar(mode: $mode)
+            // The technical console carries its own five tabs, so the Paredão bar is hidden
+            // there — two stacked navigation bars would be redundant and eat a third of the
+            // screen. Returning is handled by the "PAREDÃO" button in the console header.
+            if mode != .ui16 {
+                ModeBar(mode: $mode)
+            }
         }
         .background(Theme.bg.ignoresSafeArea())
     }

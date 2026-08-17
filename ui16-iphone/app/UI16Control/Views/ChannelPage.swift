@@ -1,64 +1,57 @@
 import SwiftUI
 import UI16Controller
 
-/// Per-channel detail: preamp, pan, aux/fx sends, and any processing parameters the
-/// mixer actually reports. Processing keys are rendered from live state rather than
-/// hardcoded, so nothing is invented and nothing is hidden.
+/// Per-channel detail, organised in tabs.
+///
+/// Tabs rather than one long scroll: on a phone a giant vertical page buries everything
+/// below the fold, and mid-show the operator needs a parameter in one tap, not after
+/// hunting through a scroll.
 struct ChannelPage: View {
     @ObservedObject var store: UI16Store
     let ref: ChannelRef
     let onSelect: (ChannelRef) -> Void
 
+    @State private var tab: Tab = .preamp
     @State private var renaming = false
     @State private var draftName = ""
+
+    enum Tab: String, CaseIterable, Identifiable {
+        case preamp, eq, dyn, sends, out
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .preamp: return "PREAMP"
+            case .eq: return "EQ"
+            case .dyn: return "DYN"
+            case .sends: return "SENDS"
+            case .out: return "OUT"
+            }
+        }
+    }
 
     private var strip: StripState { store.state.strip(ref) }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 10) {
-                ChannelRail(store: store, selected: Binding(get: { ref }, set: onSelect))
+        VStack(spacing: 8) {
+            channelBar
+            TabSelector(items: Tab.allCases, selection: $tab, label: { $0.label })
+                .padding(.horizontal, 10)
 
-                header
-
-                if ref.kind == .input {
-                    preamp
+            ScrollView {
+                VStack(spacing: 10) {
+                    switch tab {
+                    case .preamp: preampTab
+                    case .eq: ProcessingTab(store: store, ref: ref, group: .eq)
+                    case .dyn: ProcessingTab(store: store, ref: ref, group: .dyn)
+                    case .sends: SendsTab(store: store, ref: ref)
+                    case .out: outTab
+                    }
                 }
-
-                panPanel
-                sendsPanel(bus: .aux, count: UI16Model.auxCount, title: "AUX SENDS")
-                sendsPanel(bus: .fx, count: UI16Model.fxCount, title: "FX SENDS")
-                processingPanel
-            }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 16)
-        }
-    }
-
-    private var header: some View {
-        Panel {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(store.state.label(ref)).font(.system(size: 18, weight: .heavy))
-                    Text("\(ref.kind.displayName) \(ref.number) · \(ref.address)")
-                        .font(Theme.label).foregroundStyle(Theme.textDim)
-                }
-                Spacer()
-                Button {
-                    draftName = strip.name
-                    renaming = true
-                } label: {
-                    Image(systemName: "pencil.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(Theme.accent)
-                        .frame(width: Theme.tapMin, height: Theme.tapMin)
-                }
-                .buttonStyle(.plain)
-                Text(FaderMath.dbString(strip.level))
-                    .font(.system(size: 16, weight: .bold).monospacedDigit())
-                    .foregroundStyle(Theme.accent)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 16)
             }
         }
+        .padding(.top, 6)
         .alert("Nome do canal", isPresented: $renaming) {
             TextField(ref.defaultLabel, text: $draftName)
             Button("Salvar") { store.setName(ref, draftName) }
@@ -68,78 +61,120 @@ struct ChannelPage: View {
         }
     }
 
-    private var preamp: some View {
-        Panel {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("PREAMP").font(Theme.label).foregroundStyle(Theme.textDim)
+    // MARK: Channel selector bar
 
-                ParamSlider(
-                    title: "GAIN",
-                    value: Binding(get: { strip.gain }, set: { store.setGain(ref, $0) }),
-                    readout: String(format: "%+.1f dB", FaderMath.gainValueToDB(strip.gain))
-                )
-
-                ConsoleButton(
-                    title: "48V PHANTOM",
-                    subtitle: strip.phantom ? "LIGADO" : "DESLIGADO",
-                    isOn: strip.phantom,
-                    onColor: Theme.mute
-                ) {
-                    store.setPhantom(ref, !strip.phantom)
+    private var channelBar: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(store.state.label(ref))
+                        .font(.system(size: 17, weight: .heavy)).lineLimit(1)
+                    Text("\(ref.kind.displayName) \(ref.number) · \(ref.address)")
+                        .font(Theme.label).foregroundStyle(Theme.textFaint)
                 }
+                Spacer()
+                Button {
+                    draftName = strip.name
+                    renaming = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14, weight: .bold))
+                        .frame(width: 38, height: 38)
+                        .foregroundStyle(Theme.accent)
+                        .background(Theme.surfaceHigh)
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                Text(FaderMath.dbString(strip.level))
+                    .font(Theme.bigReadout(17))
+                    .foregroundStyle(strip.muted ? Theme.danger : Theme.accent)
+            }
+            .padding(.horizontal, 12)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 5) {
+                    ForEach(UI16Model.inputSources) { item in
+                        Button {
+                            onSelect(item)
+                            hapticTap(.light)
+                        } label: {
+                            Text(shortLabel(item))
+                                .font(.system(size: 11, weight: .heavy))
+                                .padding(.horizontal, 11)
+                                .frame(height: 36)
+                                .foregroundStyle(item == ref ? .black : Theme.textDim)
+                                .background(item == ref ? Theme.accent : Theme.surface)
+                                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 10)
             }
         }
     }
 
-    private var panPanel: some View {
-        Panel {
-            ParamSlider(
-                title: "PAN",
-                value: Binding(get: { strip.pan }, set: { store.setPan(ref, $0) }),
-                readout: panText(strip.pan)
-            )
+    private func shortLabel(_ r: ChannelRef) -> String {
+        switch r.kind {
+        case .input: return String(format: "%02d", r.number)
+        case .line: return "L\(r.number)"
+        case .player: return "P\(r.number)"
+        default: return r.defaultLabel
         }
     }
 
-    private func sendsPanel(bus: BusKind, count: Int, title: String) -> some View {
-        Panel {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(title).font(Theme.label).foregroundStyle(Theme.textDim)
-                ForEach(1...count, id: \.self) { n in
-                    let key = "\(bus.rawValue).\(n - 1)"
-                    let value = strip.sends[key] ?? 0
-                    VStack(alignment: .leading, spacing: 4) {
-                        ParamSlider(
-                            title: "\(bus == .aux ? "AUX" : "FX") \(n)",
-                            value: Binding(
-                                get: { value },
-                                set: { store.setSend(ref, to: bus, n, $0) }
-                            ),
-                            readout: FaderMath.dbString(value)
-                        )
-                        if bus == .aux {
-                            let post = strip.sendPost[key] ?? false
-                            // Reads as a switch, not a caption — pre/post changes what the
-                            // musician hears in the monitor, so it must look tappable.
-                            Button {
-                                store.setSendPost(ref, to: bus, n, !post)
-                                hapticTap()
-                            } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: post
-                                          ? "arrow.down.right.circle.fill"
-                                          : "arrow.up.left.circle.fill")
-                                        .font(.system(size: 12))
-                                    Text(post ? "PÓS-FADER" : "PRÉ-FADER")
-                                        .font(.system(size: 11, weight: .bold))
-                                }
-                                .padding(.horizontal, 10)
-                                .frame(height: 32)
-                                .foregroundStyle(post ? .black : Theme.text)
-                                .background(post ? Theme.accent : Theme.surfaceHigh)
-                                .clipShape(Capsule())
+    // MARK: PREAMP
+
+    private var preampTab: some View {
+        VStack(spacing: 10) {
+            SectionPanel(title: "PREAMP") {
+                HStack(alignment: .top, spacing: 14) {
+                    if ref.kind == .input {
+                        KnobControl(title: "GAIN",
+                                    value: Binding(get: { strip.gain },
+                                                   set: { store.setGain(ref, $0) }),
+                                    readout: String(format: "%+.1f dB",
+                                                    FaderMath.gainValueToDB(strip.gain)),
+                                    size: 62)
+                    }
+                    KnobControl(title: "PAN",
+                                value: Binding(get: { strip.pan },
+                                               set: { store.setPan(ref, $0) }),
+                                readout: panText(strip.pan),
+                                bipolar: true, size: 62)
+                    Spacer(minLength: 0)
+                    if ref.kind == .input {
+                        VStack(spacing: 6) {
+                            ConsoleButton(title: "48V", subtitle: strip.phantom ? "ON" : "OFF",
+                                          isOn: strip.phantom, onColor: Theme.danger,
+                                          height: 46, compact: true,
+                                          enabled: store.state.connected) {
+                                store.setPhantom(ref, !strip.phantom)
                             }
-                            .buttonStyle(.plain)
+                            PhaseInlineButton(store: store, ref: ref)
+                        }
+                        .frame(width: 104)
+                    }
+                }
+            }
+
+            SectionPanel(title: "FADER") {
+                HStack(spacing: 14) {
+                    ConsoleFader(value: Binding(get: { strip.level },
+                                                set: { store.setLevel(ref, $0) }),
+                                 tint: strip.muted ? Theme.danger : Theme.accent)
+                        .frame(width: 44, height: 120)
+                    SegmentedMeter(level: store.state.vu.postFader(for: ref) ?? 0,
+                                   orientation: .vertical)
+                        .frame(width: 12, height: 120)
+                    VStack(spacing: 8) {
+                        ConsoleButton(title: "MUTE", isOn: strip.muted, onColor: Theme.danger,
+                                      height: 52, enabled: store.state.connected) {
+                            store.setMute(ref, !strip.muted)
+                        }
+                        ConsoleButton(title: "SOLO", isOn: strip.solo, onColor: Theme.solo,
+                                      height: 52, enabled: store.state.connected) {
+                            store.setSolo(ref, !strip.solo)
                         }
                     }
                 }
@@ -147,38 +182,37 @@ struct ChannelPage: View {
         }
     }
 
-    /// Renders EQ / gate / dynamics parameters straight from live mixer state.
-    ///
-    /// The publicly-documented reference implementation does not expose write keys for
-    /// these blocks, so the app does not invent command names. Instead it lists whatever
-    /// the hardware reports under this channel and lets the operator adjust it by its real
-    /// key. See docs/protocol.md.
-    private var processingPanel: some View {
-        let known: Set<String> = ["mix", "mute", "solo", "pan", "gain", "phantom", "name", "stereoIndex"]
-        let prefix = UI16Key.processingPrefix(ref)
-        let keys = store.state.rawKeys(withPrefix: prefix).filter { key in
-            let tail = String(key.dropFirst(prefix.count))
-            // hide plain params already shown above and send values shown in their own panel
-            if known.contains(tail) { return false }
-            if tail.hasPrefix("aux.") || tail.hasPrefix("fx.") || tail.hasPrefix("mtx.") { return false }
-            return true
-        }
+    // MARK: OUT
 
-        return Panel {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("PROCESSAMENTO (EQ / GATE / COMP)")
-                    .font(Theme.label).foregroundStyle(Theme.textDim)
-
-                if keys.isEmpty {
-                    Text("Nenhum parâmetro de processamento recebido da mesa ainda. Conecte-se à Ui16 — todos os parâmetros que ela enviar aparecem aqui automaticamente.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.textDim)
-                } else {
-                    ForEach(keys, id: \.self) { key in
-                        RawParamRow(store: store, key: key)
-                    }
+    private var outTab: some View {
+        SectionPanel(title: "SAÍDA / ESTADO") {
+            VStack(spacing: 8) {
+                infoRow("NÍVEL", FaderMath.dbString(strip.level))
+                infoRow("PAN", panText(strip.pan))
+                infoRow("MUTE", strip.muted ? "ATIVO" : "—",
+                        color: strip.muted ? Theme.danger : Theme.textDim)
+                infoRow("SOLO", strip.solo ? "ATIVO" : "—",
+                        color: strip.solo ? Theme.solo : Theme.textDim)
+                if ref.kind == .input {
+                    infoRow("48V", strip.phantom ? "LIGADO" : "—",
+                            color: strip.phantom ? Theme.danger : Theme.textDim)
+                    infoRow("GANHO", String(format: "%+.1f dB", FaderMath.gainValueToDB(strip.gain)))
                 }
+                infoRow("ENDEREÇO", ref.address, color: Theme.textDim)
             }
+        }
+    }
+
+    private func infoRow(_ title: String, _ value: String,
+                         color: Color = Theme.accent) -> some View {
+        HStack {
+            Text(title).font(Theme.label).foregroundStyle(Theme.textDim)
+            Spacer()
+            Text(value).font(Theme.readout(13)).foregroundStyle(color)
+        }
+        .padding(.vertical, 7)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.stroke).frame(height: 1)
         }
     }
 
@@ -189,40 +223,53 @@ struct ChannelPage: View {
     }
 }
 
-/// An editable row for any raw mixer parameter, addressed by its exact wire key.
-struct RawParamRow: View {
+/// PHASE for a mixer channel, inline in the preamp section.
+///
+/// Only transmits once the mixer has reported a real polarity address; otherwise it is
+/// disabled and says so. The project does not invent protocol.
+struct PhaseInlineButton: View {
     @ObservedObject var store: UI16Store
-    let key: String
+    let ref: ChannelRef
+
+    private var availability: PhaseAvailabilityShim {
+        PhaseAvailabilityShim(store: store, ref: ref)
+    }
 
     var body: some View {
-        let raw = store.state.raw[key]
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(shortName).font(.system(size: 12, weight: .semibold))
-                Spacer()
-                Text(raw?.text ?? "—")
-                    .font(Theme.value).foregroundStyle(Theme.accent)
-            }
-            Text(key).font(.system(size: 9, design: .monospaced)).foregroundStyle(Theme.textDim)
-
-            if let value = raw?.double, isUnitRange(value) {
-                Slider(
-                    value: Binding(
-                        get: { value },
-                        set: { store.sendRawNumber(key, $0) }
-                    ),
-                    in: 0...1
-                )
-                .tint(Theme.accent)
-            }
+        let a = availability
+        ConsoleButton(title: "PHASE",
+                      subtitle: a.available ? (a.inverted ? "Ø INV" : "NORMAL") : "N/D",
+                      isOn: a.available && a.inverted,
+                      onColor: Theme.solo, height: 46, compact: true,
+                      enabled: a.available && store.state.connected) {
+            a.toggle()
         }
-        .padding(.vertical, 4)
+    }
+}
+
+/// Bridges the phase resolution logic into the technical mixer without pulling ParedaoCore
+/// into this file's dependencies.
+@MainActor
+struct PhaseAvailabilityShim {
+    let store: UI16Store
+    let ref: ChannelRef
+
+    private var key: String? {
+        let prefix = ref.address + "."
+        let candidates = ["phase", "polarity", "invert", "pol", "phaseinvert"]
+        for k in store.state.raw.keys where k.hasPrefix(prefix) {
+            if candidates.contains(String(k.dropFirst(prefix.count)).lowercased()) { return k }
+        }
+        return nil
     }
 
-    private var shortName: String {
-        key.split(separator: ".").dropFirst(2).joined(separator: " ").uppercased()
+    var available: Bool { key != nil }
+    var inverted: Bool {
+        guard let key, let v = store.state.raw[key]?.double else { return false }
+        return v != 0
     }
-
-    /// Only offer a 0...1 slider for values that actually look normalized.
-    private func isUnitRange(_ v: Double) -> Bool { v >= 0 && v <= 1 }
+    func toggle() {
+        guard let key else { return }
+        store.sendRawBool(key, !inverted)
+    }
 }

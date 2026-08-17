@@ -1,46 +1,53 @@
 import SwiftUI
 import UI16Controller
 
-/// Root live-operation screen: status bar, channel strip, master, and tabs.
+/// The technical Ui16 console.
+///
+/// Laid out like a digital mixer adapted to a phone rather than a settings screen:
+/// a master section on top, several channel strips side by side, and the selected
+/// channel's detail in tabs below. The operator sees the mix, not a list.
 struct MixerView: View {
     @ObservedObject var store: UI16Store
     @Binding var host: String
+    /// Lets the shell switch back to Paredão from the header.
+    var onExitToParedao: (() -> Void)? = nil
 
     @State private var selected = ChannelRef(.input, 1)
-    @State private var tab: Tab = .mix
+    @State private var tab: Tab = .mixer
     @State private var showSettings = false
 
-    enum Tab: String, CaseIterable {
-        case mix, channel, buses, shows, diagnostics
+    enum Tab: String, CaseIterable, Identifiable {
+        case mixer, channel, auxfx, shows, diag
+        var id: String { rawValue }
         var label: String {
             switch self {
-            case .mix: return "MIXER"
+            case .mixer: return "MIXER"
             case .channel: return "CANAL"
-            case .buses: return "AUX/FX"
+            case .auxfx: return "AUX/FX"
             case .shows: return "SHOWS"
-            case .diagnostics: return "DIAG"
+            case .diag: return "DIAG"
             }
         }
         var icon: String {
             switch self {
-            case .mix: return "slider.vertical.3"
+            case .mixer: return "slider.vertical.3"
             case .channel: return "dial.high.fill"
-            case .buses: return "arrow.triangle.branch"
+            case .auxfx: return "arrow.triangle.branch"
             case .shows: return "square.stack.3d.up.fill"
-            case .diagnostics: return "waveform.path.ecg"
+            case .diag: return "waveform.path.ecg"
             }
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            StatusBar(store: store, host: host) { showSettings = true }
+            ConsoleHeader(store: store, host: host,
+                          onSettings: { showSettings = true },
+                          onExit: onExitToParedao)
 
-            // Connection loss must be unmistakable — it sits in the layout flow so it
-            // never covers the status header.
             if !store.state.connected {
                 ConnectionBanner(state: store.connection)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 12)
                     .padding(.bottom, 6)
                     .background(Color.black)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -48,81 +55,92 @@ struct MixerView: View {
 
             Group {
                 switch tab {
-                case .mix:
-                    MixPage(store: store, selected: $selected)
+                case .mixer:
+                    MixerPage(store: store, selected: $selected,
+                              onOpenChannel: { tab = .channel })
                 case .channel:
                     ChannelPage(store: store, ref: selected, onSelect: { selected = $0 })
-                case .buses:
-                    BusesPage(store: store)
+                case .auxfx:
+                    AuxFXPage(store: store)
                 case .shows:
                     ShowsPage(store: store)
-                case .diagnostics:
+                case .diag:
                     DiagnosticsPage(store: store)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            TabBar(tab: $tab)
+            TechTabBar(tab: $tab)
         }
         .background(Theme.bg.ignoresSafeArea())
         .sheet(isPresented: $showSettings) {
             ConnectionSheet(store: store, host: $host)
         }
-        .animation(.easeOut(duration: 0.2), value: store.state.connected)
+        .animation(.easeOut(duration: 0.18), value: store.state.connected)
     }
 }
 
-// MARK: - Status bar
-
-struct StatusBar: View {
+/// Header for the technical mode. Carries the mode badge so the operator always knows
+/// which of the two worlds they are in.
+struct ConsoleHeader: View {
     @ObservedObject var store: UI16Store
     let host: String
     let onSettings: () -> Void
+    var onExit: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(store.state.connected ? Theme.ok : Theme.mute)
-                .frame(width: 10, height: 10)
-                .shadow(color: store.state.connected ? Theme.ok : Theme.mute, radius: 4)
-
-            VStack(alignment: .leading, spacing: 0) {
-                Text("UI16 CONTROL").font(Theme.title)
-                Text(store.state.connected ? "ONLINE · \(host)" : statusText)
-                    .font(Theme.label)
+            if let onExit {
+                Button {
+                    onExit()
+                    hapticTap(.light)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left").font(.system(size: 12, weight: .heavy))
+                        Text("PAREDÃO").font(.system(size: 11, weight: .heavy))
+                    }
                     .foregroundStyle(Theme.textDim)
-            }
-
-            Spacer()
-
-            // Master meter always visible, even on other pages.
-            if let m = store.state.vu.masterPostFader {
-                HStack(spacing: 3) {
-                    MeterBar(level: m.l).frame(width: 6)
-                    MeterBar(level: m.r).frame(width: 6)
+                    .padding(.horizontal, 9)
+                    .frame(height: 32)
+                    .background(Theme.surfaceHigh)
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                 }
-                .frame(height: 30)
+                .buttonStyle(.plain)
             }
+
+            Text("UI16")
+                .font(.system(size: 15, weight: .black))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 8)
+                .frame(height: 32)
+                .background(Theme.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+            StatusPill(text: statusText,
+                       color: store.state.connected ? Theme.ok : Theme.danger)
+
+            Spacer(minLength: 0)
 
             Button(action: onSettings) {
                 Image(systemName: "gearshape.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .frame(width: Theme.tapMin, height: Theme.tapMin)
-                    .foregroundStyle(Theme.text)
+                    .foregroundStyle(Theme.textDim)
             }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
         .background(Color.black)
     }
 
     private var statusText: String {
         switch store.connection {
-        case .disconnected: return "DESCONECTADO"
-        case .connecting: return "CONECTANDO…"
+        case .disconnected: return "OFFLINE"
+        case .connecting: return "CONECTANDO"
         case .connected: return "ONLINE"
-        case .reconnecting: return "RECONECTANDO…"
-        case .failed(let e): return "FALHA: \(e.uppercased())"
+        case .reconnecting: return "RECONECTANDO"
+        case .failed: return "FALHA"
         }
     }
 }
@@ -132,47 +150,51 @@ struct ConnectionBanner: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "wifi.exclamationmark")
-            Text(text).font(.system(size: 13, weight: .bold))
+            Text(text).font(.system(size: 12, weight: .heavy))
+            Spacer()
         }
-        .padding(.horizontal, 14).padding(.vertical, 9)
+        .padding(.horizontal, 12).padding(.vertical, 8)
         .frame(maxWidth: .infinity)
-        .background(Theme.mute)
+        .background(Theme.danger)
         .foregroundStyle(.black)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
     private var text: String {
         switch state {
         case .reconnecting: return "SEM CONEXÃO — RECONECTANDO"
         case .connecting: return "CONECTANDO À MESA…"
-        case .failed(let e): return "FALHA: \(e)"
+        case .failed(let e): return "FALHA: \(e.uppercased())"
         default: return "SEM CONEXÃO COM A MESA"
         }
     }
 }
 
-// MARK: - Tab bar
-
-struct TabBar: View {
+struct TechTabBar: View {
     @Binding var tab: MixerView.Tab
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(MixerView.Tab.allCases, id: \.self) { t in
+            ForEach(MixerView.Tab.allCases) { t in
                 Button {
                     tab = t
-                    hapticTap()
+                    hapticTap(.light)
                 } label: {
                     VStack(spacing: 3) {
-                        Image(systemName: t.icon).font(.system(size: 17, weight: .semibold))
-                        Text(t.label).font(.system(size: 10, weight: .bold))
+                        Image(systemName: t.icon).font(.system(size: 16, weight: .semibold))
+                        Text(t.label)
+                            .font(.system(size: 9, weight: .heavy))
+                            .lineLimit(1).minimumScaleFactor(0.7)
                     }
                     .frame(maxWidth: .infinity, minHeight: Theme.tapMin)
-                    .foregroundStyle(tab == t ? Theme.accent : Theme.textDim)
+                    .foregroundStyle(tab == t ? Theme.accent : Theme.textFaint)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.top, 4)
+        .padding(.top, 5)
         .background(Color.black)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Theme.stroke).frame(height: 1)
+        }
     }
 }
