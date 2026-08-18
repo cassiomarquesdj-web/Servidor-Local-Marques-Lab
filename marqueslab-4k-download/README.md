@@ -97,5 +97,5 @@ O estado atual e o que foi de fato validado estão em [DIAGNOSTICO.md](DIAGNOSTI
 
 ## Requisitos do usuário final
 
-- macOS 13 Ventura ou superior (imposto pelas bibliotecas Qt embarcadas).
+- macOS 12 Monterey ou superior (imposto pelas bibliotecas Qt embarcadas).
 - Apple Silicon ou Intel.

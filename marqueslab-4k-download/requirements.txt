@@ -4,5 +4,9 @@
 yt-dlp>=2026.7.4
 # Essentials only: QtQuick/WebEngine/Multimedia are not used and would add
 # hundreds of megabytes to the distributed .app.
-PySide6-Essentials>=6.8,<7
+#
+# Pinned below 6.10 on purpose: from 6.10 onwards the Qt/shiboken binaries are
+# built with a macOS 15 deployment target, which would lock the application out
+# of every Mac running macOS 12, 13 or 14. 6.9.x targets macOS 12.
+PySide6-Essentials>=6.9,<6.10
 imageio-ffmpeg>=0.6,<1

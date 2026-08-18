@@ -54,9 +54,13 @@ versionado e testado. O passo a passo está em [DISTRIBUICAO.md](DISTRIBUICAO.md
    instalava um `.dev0` a cada build. Corrigido para `>=2026.7.4`.
 10. **PySide6 completo (~450 MB) no lugar do essencial.** Trocado por
     `PySide6-Essentials`, sem QtQuick/WebEngine/Multimedia, que o app não usa.
-11. **`LSMinimumSystemVersion` mentia.** Declarava macOS 12 enquanto as
-    bibliotecas Qt exigem macOS 13. O build agora compara o `minos` real de todos
-    os binários com o Info.plist e falha se houver promessa falsa.
+11. **`LSMinimumSystemVersion` mentia — e o Qt escolhido excluía a maioria dos
+    Macs.** O build agora compara o `minos` real de todos os binários embarcados
+    com o Info.plist e falha se houver promessa falsa. Foi essa verificação que
+    revelou que o PySide6 6.10+ é compilado para macOS 15, apesar de a wheel se
+    anunciar como `macosx_13_0`: o aplicativo simplesmente não abriria em macOS
+    12, 13 ou 14. O PySide6 ficou fixado em 6.9.x, que tem deployment target
+    macOS 12, e o Info.plist declara 12.0.
 12. **O workflow anterior não conseguia gerar nada.** Exigia os Secrets da Apple
     logo no início, sem nenhum caminho de validação, e usava `codesign --deep`,
     que a Apple desaconselha para distribuição. Substituído por assinatura de

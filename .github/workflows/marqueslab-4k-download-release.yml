@@ -201,7 +201,7 @@ jobs:
             echo
             echo "## Requisitos"
             echo
-            echo "- macOS 13 Ventura ou superior."
+            echo "- macOS 12 Monterey ou superior."
             echo
             echo "## Validação executada antes da publicação"
             echo

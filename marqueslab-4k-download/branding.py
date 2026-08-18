@@ -12,7 +12,7 @@ BUNDLE_ID = "com.marqueslab.MarquesLab4KDownload"
 VERSION = "1.0.0"
 COPYRIGHT = "© Marques Lab"
 ORGANIZATION = "Marques Lab"
-MINIMUM_MACOS = "13.0"  # imposto pelas wheels do PySide6 (Qt exige macOS 13+)
+MINIMUM_MACOS = "12.0"  # deployment target real das bibliotecas Qt embarcadas
 
 __all__ = [
     "APP_NAME",
