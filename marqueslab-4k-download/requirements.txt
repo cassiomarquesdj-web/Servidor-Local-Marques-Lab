@@ -1,4 +1,8 @@
-yt-dlp>=2026.08.01
-PySide6>=6.8,<7
+# Runtime dependencies of the application.
+# yt-dlp is deliberately allowed to float forward: extractors break when sites
+# change, so the release build always picks up the newest stable release.
+yt-dlp>=2026.7.4
+# Essentials only: QtQuick/WebEngine/Multimedia are not used and would add
+# hundreds of megabytes to the distributed .app.
+PySide6-Essentials>=6.8,<7
 imageio-ffmpeg>=0.6,<1
-pyinstaller>=6.15,<7
