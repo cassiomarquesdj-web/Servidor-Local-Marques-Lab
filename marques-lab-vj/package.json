@@ -1,0 +1,35 @@
+{
+  "name": "marques-lab-vj",
+  "productName": "Marques Lab VJ",
+  "version": "0.1.0",
+  "description": "Marques Lab VJ — performance visual profissional para LED Wall, telão e palco.",
+  "author": "Marques Lab / DJ Cássio",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "build": "electron-builder --mac --dir",
+    "dist": "electron-builder --mac",
+    "dist:dmg": "electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.marqueslab.vj",
+    "productName": "Marques Lab VJ",
+    "directories": {"output": "dist"},
+    "files": ["main.js", "preload.js", "renderer/**/*", "README.md", "LICENSE"],
+    "mac": {
+      "target": [{"target": "dmg", "arch": ["arm64"]}],
+      "category": "public.app-category.graphics-design",
+      "identity": null
+    },
+    "dmg": {
+      "title": "Marques Lab VJ",
+      "artifactName": "Marques-Lab-VJ-${version}-arm64.dmg"
+    }
+  }
+}
