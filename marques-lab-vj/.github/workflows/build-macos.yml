@@ -1,0 +1,53 @@
+name: Marques Lab VJ — macOS DMG
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-dmg:
+    runs-on: macos-14
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: marques-lab-vj
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: marques-lab-vj/package-lock.json
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate JavaScript
+        run: |
+          node --check main.js
+          node --check preload.js
+          node --check renderer/app.js
+
+      - name: Build DMG
+        run: npm run dist:dmg
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Verify DMG
+        run: |
+          test -f dist/Marques-Lab-VJ-0.1.0-arm64.dmg
+          hdiutil imageinfo dist/Marques-Lab-VJ-0.1.0-arm64.dmg >/dev/null
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Marques-Lab-VJ-macOS-arm64
+          path: marques-lab-vj/dist/Marques-Lab-VJ-0.1.0-arm64.dmg
+          if-no-files-found: error
