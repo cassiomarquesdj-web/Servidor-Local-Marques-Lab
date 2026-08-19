@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' file: blob:; img-src 'self' data: file: blob:;" />
+  <title>Marques Lab VJ</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-main">MARQUES LAB</span><span class="brand-accent">VJ</span><span class="brand-by">By DJ Cássio</span></div>
+      <div class="top-status">
+        <div class="status-item"><span class="status-label">BPM</span><strong id="bpmReadout">128.0</strong><span class="auto-pill">AUTO</span></div>
+        <button id="tapBtn" class="top-button">TAP</button>
+        <div id="meter" class="meter"></div>
+        <div class="status-item"><span class="status-label">AUDIO</span><strong class="good">READY</strong></div>
+        <div class="status-item"><span class="status-label">CAMERA</span><strong class="good">iPhone de Cassio</strong></div>
+        <div class="status-item"><span class="status-label">OUTPUT</span><strong class="good">1920x1080 60Hz</strong></div>
+        <div class="status-item"><span class="status-label">FPS</span><strong id="fpsReadout">60</strong></div>
+        <button id="recBtn" class="rec-button"><span class="rec-dot"></span> REC</button>
+        <button id="settingsBtn" class="icon-button">⚙</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar panel">
+        <div class="panel-title purple">BIBLIOTECA</div>
+        <div id="libraryFilters" class="library-filters">
+          <button class="lib-item active" data-filter="Tudo">◈ <span>Tudo</span></button>
+          <button class="lib-item" data-filter="Vídeos">▣ <span>Vídeos</span></button>
+          <button class="lib-item" data-filter="Motion">✦ <span>Motion</span></button>
+          <button class="lib-item" data-filter="Imagens">▧ <span>Imagens</span></button>
+          <button class="lib-item" data-filter="Logos">◉ <span>Logos</span></button>
+          <button class="lib-item" data-filter="Texto">T <span>Texto</span></button>
+          <button class="lib-item" data-filter="IA Effects">✺ <span>IA Effects</span></button>
+          <button class="lib-item" data-filter="Áudio">♪ <span>Áudio</span></button>
+          <button class="lib-item" data-filter="Favoritos">★ <span>Favoritos</span></button>
+          <button class="lib-item" data-filter="Projetos">▤ <span>Projetos</span></button>
+        </div>
+        <div class="section-label">COLEÇÕES</div>
+        <button class="collection">◈ TBT DOS MANINHOS</button>
+        <button class="collection">◈ FESTIVAL 2025</button>
+        <button class="collection">◈ ABERTURAS</button>
+        <button class="collection">◈ REACTIONS</button>
+        <button class="collection">◈ CLUB</button>
+        <button id="newCollection" class="new-collection">＋ Nova Coleção</button>
+        <div class="library-preview">
+          <div class="library-preview-title">CLIP ATIVO</div>
+          <div class="clip-card selected" draggable="true">
+            <div class="thumb gradient-a">TBT</div>
+            <div class="clip-info"><strong>VJ LOOP 01</strong><span>00:30 • 1920×1080</span></div>
+          </div>
+          <button id="importBtn" class="import-button">＋ Importar mídia</button>
+        </div>
+      </aside>
+
+      <section class="center-column">
+        <section class="preview-panel panel">
+          <div class="panel-heading"><span>PREVIEW / OUTPUT</span><span class="live-chip">LIVE PREVIEW</span></div>
+          <div id="preview" class="preview-canvas">
+            <div class="grid-lines"></div>
+            <div class="stage-glow glow-1"></div>
+            <div class="stage-glow glow-2"></div>
+            <div class="stage-ring ring-1"></div>
+            <div class="stage-ring ring-2"></div>
+            <div class="preview-content">
+              <div class="preview-kicker">VISUAL PERFORMANCE SYSTEM</div>
+              <div class="preview-title">MARQUES<br/><span>LAB VJ</span></div>
+              <div class="preview-sub">• BY DJ CÁSSIO •</div>
+            </div>
+            <div class="preview-foot"><span id="previewSource">CAMERA • iPhone de Cassio</span><span id="previewMode">OUTPUT • 1920×1080 / 60 FPS</span></div>
+            <video id="mediaPreview" class="media-preview" muted playsinline></video>
+          </div>
+        </section>
+
+        <section class="layers-panel panel">
+          <div class="layers-heading"><span>LAYERS / COLUNAS</span><span class="hint">Clique para disparar • duplo clique para editar</span></div>
+          <div id="layersGrid" class="layers-grid"></div>
+        </section>
+
+        <section class="transport panel">
+          <div class="mode-switch"><button id="studioMode" class="mode active">STUDIO MODE</button><button id="performanceMode" class="mode">PERFORMANCE MODE</button></div>
+          <div class="transport-center">
+            <button class="transport-btn" data-action="prev">|◀</button>
+            <button class="transport-btn" data-action="back">◀</button>
+            <button id="playBtn" class="play-btn">▶</button>
+            <button class="transport-btn" data-action="next">▶|</button>
+            <button id="autoBtn" class="transport-btn">AUTO</button>
+            <button id="syncBtn" class="transport-btn accent">AUTO<br/>SYNC</button>
+          </div>
+          <div class="output-control"><span>SAÍDA</span><button id="outputBtn" class="output-button">TELÃO PRINCIPAL ▾</button><span class="volume-icon">◖</span><input id="volumeSlider" type="range" min="0" max="100" value="80"/></div>
+        </section>
+      </section>
+
+      <aside class="right-column">
+        <section class="inspector panel">
+          <div class="panel-heading"><span>INSPECTOR</span><span>⌄</span></div>
+          <div class="tabs" id="inspectorTabs">
+            <button class="tab active" data-tab="GERAL">GERAL</button>
+            <button class="tab" data-tab="TRANSFORM">TRANSFORM</button>
+            <button class="tab" data-tab="COR">COR</button>
+            <button class="tab" data-tab="ANIMAÇÃO">ANIMAÇÃO</button>
+            <button class="tab" data-tab="MÁSCARA">MÁSCARA</button>
+          </div>
+          <div class="inspector-content">
+            <label class="field-label">FONTE</label><button class="source-select">▣ Câmera - iPhone de Cassio <span>⌄</span></button>
+            <div class="slider-row"><span>OPACIDADE</span><strong id="opacityReadout">100%</strong></div><input id="opacitySlider" type="range" min="0" max="100" value="100"/>
+            <label class="field-label">BLEND MODE</label><select id="blendMode"><option>Screen</option><option>Add</option><option>Normal</option><option>Multiply</option></select>
+            <div class="effects-header"><span>EFEITOS <span id="effectsCount">(5)</span></span></div>
+            <div id="effectsList" class="effects-list"></div>
+            <button id="addEffect" class="add-effect">＋ ADICIONAR EFEITO</button>
+          </div>
+        </section>
+
+        <section class="audio panel">
+          <div class="panel-heading"><span>AUDIO ANALYZER</span><span>⌄</span></div>
+          <div class="bpm-big"><div><span>BPM</span><strong id="audioBpm">128.0</strong></div><span class="auto-pill green">AUTO</span></div>
+          <div class="confidence">CONFIDENCE <strong id="confidence">98%</strong></div>
+          <div class="spectrum" id="spectrum"></div>
+          <div id="audioMetrics" class="metrics"></div>
+        </section>
+
+        <section id="helpPanel" class="help-panel panel hidden">
+          <div class="panel-heading"><span>ATALHOS</span><button id="closeHelp" class="small-close">×</button></div>
+          <div class="shortcuts">
+            <div><kbd>Space</kbd><span>Play / Pause</span></div>
+            <div><kbd>A</kbd><span>Ativar camada A</span></div>
+            <div><kbd>B</kbd><span>Ativar camada B</span></div>
+            <div><kbd>R</kbd><span>REC</span></div>
+            <div><kbd>⌘O</kbd><span>Importar mídia</span></div>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>
