@@ -34,7 +34,7 @@ O instalador é gerado em `dist/Marques-Lab-VJ-0.1.0-arm64.dmg`.
 
 ## GitHub Actions
 
-O workflow `.github/workflows/build-macos.yml` valida o JavaScript e gera automaticamente o DMG em macOS 14 Apple Silicon, anexando o instalador como artifact.
+O workflow `.github/workflows/marques-lab-vj-build.yml` valida o JavaScript e gera automaticamente o DMG em macOS 14 Apple Silicon, anexando o instalador como artifact.
 
 ## Arquitetura
 
