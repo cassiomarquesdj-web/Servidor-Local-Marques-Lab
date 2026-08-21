@@ -125,3 +125,40 @@ def test_format_helpers():
     assert format_duration(None) == "—"
     assert format_duration(65) == "1:05"
     assert format_duration(3725) == "1:02:05"
+
+
+def test_friendly_error_explains_a_403():
+    """A raw 'HTTP Error 403' tells the user nothing about what to do."""
+    from engine import friendly_error
+
+    message = friendly_error("ERROR: unable to download video data: HTTP Error 403: Forbidden")
+    assert "desatualizado" in message
+    assert "Atualize" in message
+    assert "Detalhe técnico:" in message
+    assert "403" in message
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("ERROR: Requested format is not available", "Melhor disponível"),
+    ("Sign in to confirm your age", "confirmação de idade"),
+    ("ERROR: Private video. Sign in", "privada"),
+    ("ERROR: Video unavailable", "não está disponível"),
+    ("ERROR: Unsupported URL: https://example.com", "não é reconhecido"),
+])
+def test_friendly_error_covers_the_common_failures(raw, expected):
+    from engine import friendly_error
+
+    assert expected in friendly_error(raw)
+
+
+def test_friendly_error_passes_unknown_messages_through():
+    from engine import friendly_error
+
+    assert friendly_error("  algo totalmente novo  ") == "algo totalmente novo"
+
+
+def test_extractor_version_is_reported():
+    from engine import extractor_version
+
+    version = extractor_version()
+    assert version and version[0].isdigit()

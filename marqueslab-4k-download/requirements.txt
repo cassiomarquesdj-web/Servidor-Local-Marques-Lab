@@ -1,7 +1,15 @@
 # Runtime dependencies of the application.
-# yt-dlp is deliberately allowed to float forward: extractors break when sites
-# change, so the release build always picks up the newest stable release.
-yt-dlp>=2026.7.4
+#
+# yt-dlp uses the NIGHTLY channel on purpose. YouTube and other providers break
+# extractors continuously and the stable releases lag weeks behind: the stable
+# 2026.7.4 already fails with "HTTP Error 403: Forbidden" on ordinary YouTube
+# videos because the player client it uses was blocked. The upstream project
+# itself recommends nightly builds for exactly this reason.
+#
+# The `.dev0` suffix in the specifier is what makes pip consider pre-releases
+# for this package only — no global --pre is needed, and the other pinned
+# dependencies stay on their stable releases.
+yt-dlp>=2026.8.20.dev0
 # Essentials only: QtQuick/WebEngine/Multimedia are not used and would add
 # hundreds of megabytes to the distributed .app.
 #

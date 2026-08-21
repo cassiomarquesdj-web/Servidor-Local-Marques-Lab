@@ -336,6 +336,61 @@ class DownloadEngine:
         }
 
 
+# Mapping of the failures users actually hit, to a message that says what to do.
+# yt-dlp's raw text ("HTTP Error 403: Forbidden") tells a user nothing about the
+# fact that the provider changed its delivery and the extractor is out of date.
+_FRIENDLY_ERRORS: tuple[tuple[str, str], ...] = (
+    (
+        "403",
+        "A fonte recusou a entrega da mídia (HTTP 403). Isso quase sempre "
+        "significa que o site mudou a forma de servir o vídeo e o extrator "
+        "embarcado ficou desatualizado. Atualize o Marques Lab 4K Download "
+        "para a versão mais recente.",
+    ),
+    (
+        "requested format is not available",
+        "A qualidade escolhida não existe para esta mídia. Selecione "
+        "\"Melhor disponível\" ou uma resolução menor e tente novamente.",
+    ),
+    (
+        "sign in to confirm your age",
+        "Esta mídia exige confirmação de idade na fonte. O aplicativo não faz "
+        "login nem contorna restrição de acesso.",
+    ),
+    (
+        "private video",
+        "Esta mídia é privada. O aplicativo não faz login nem contorna "
+        "restrição de acesso.",
+    ),
+    (
+        "video unavailable",
+        "A fonte informou que esta mídia não está disponível.",
+    ),
+    (
+        "unsupported url",
+        "Este site não é reconhecido pelo extrator embarcado.",
+    ),
+    (
+        "name or service not known",
+        "Sem conexão com a internet ou o endereço não pôde ser resolvido.",
+    ),
+)
+
+
+def friendly_error(message: str) -> str:
+    """Translate a yt-dlp failure into something the user can act on."""
+    lowered = message.lower()
+    for needle, explanation in _FRIENDLY_ERRORS:
+        if needle in lowered:
+            return f"{explanation}\n\nDetalhe técnico: {message.strip()}"
+    return message.strip()
+
+
+def extractor_version() -> str:
+    """Version of the bundled yt-dlp, shown in the About dialog and self-test."""
+    return yt_dlp.version.__version__
+
+
 def format_bytes(value: float | None) -> str:
     if not value:
         return "—"

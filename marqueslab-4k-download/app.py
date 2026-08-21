@@ -23,8 +23,8 @@ from PySide6.QtWidgets import (
 from branding import APP_NAME, BUNDLE_ID, COPYRIGHT, ORGANIZATION, VERSION
 from engine import (
     DownloadCancelled, DownloadEngine, DownloadResult, FFmpegNotFound, MediaChoice,
-    choose_audio, choose_video, ffmpeg_executable, format_bytes, format_duration,
-    split_urls,
+    choose_audio, choose_video, extractor_version, ffmpeg_executable, format_bytes,
+    format_duration, friendly_error, split_urls,
 )
 
 ICON_PATH = Path(__file__).resolve().parent / "assets" / "AppIcon.icns"
@@ -99,7 +99,7 @@ class AnalyzeWorker(QObject):
             info = engine.analyze(self.url, playlist=self.playlist)
             self.done.emit(engine.summarize(info))
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
-            self.failed.emit(str(exc))
+            self.failed.emit(friendly_error(str(exc)))
 
 
 class DownloadWorker(QObject):
@@ -123,7 +123,7 @@ class DownloadWorker(QObject):
         except DownloadCancelled:
             self.cancelled.emit()
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
-            self.failed.emit(str(exc))
+            self.failed.emit(friendly_error(str(exc)))
 
     def cancel(self):
         if self.engine:
@@ -334,7 +334,8 @@ class MainWindow(QMainWindow):
             self,
             f"Sobre o {APP_NAME}",
             f"<b>{APP_NAME}</b><br>Versão {VERSION}<br>{COPYRIGHT}<br><br>"
-            f"Identificador: {BUNDLE_ID}<br>FFmpeg: {ffmpeg}",
+            f"Identificador: {BUNDLE_ID}<br>"
+            f"Extrator yt-dlp: {extractor_version()}<br>FFmpeg: {ffmpeg}",
         )
 
     def _check_ffmpeg(self):
@@ -566,7 +567,14 @@ class MainWindow(QMainWindow):
             self._refresh_row(index)
             self._save_history(job.url, "falhou: " + message[:160], job.display_title)
         if not self._shutting_down:
-            QMessageBox.warning(self, "Download", message)
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Download")
+            head, _, detail = message.partition("Detalhe técnico:")
+            box.setText(head.strip() or message)
+            if detail:
+                box.setDetailedText(detail.strip())
+            box.exec()
         self._next_or_finish()
 
     def cancel_current(self):

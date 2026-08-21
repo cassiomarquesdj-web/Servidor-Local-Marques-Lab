@@ -151,3 +151,19 @@ def test_documentation_explains_the_secrets():
     ]:
         assert secret in doc
     assert "Developer ID Application" in doc
+
+
+def test_ytdlp_tracks_the_nightly_channel():
+    """Stable yt-dlp lags weeks behind and ships broken YouTube extractors.
+
+    The stable 2026.7.4 returns "HTTP Error 403: Forbidden" on ordinary videos.
+    The specifier must keep accepting pre-releases so every build picks up the
+    newest extractor fixes.
+    """
+    text = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+    line = next(l for l in text.splitlines() if l.strip().startswith("yt-dlp"))
+    assert ".dev" in line, (
+        "o especificador do yt-dlp precisa aceitar pré-lançamentos "
+        f"(canal nightly); encontrado: {line!r}"
+    )
+    assert "nightly" in text.lower(), "explique no arquivo por que o canal nightly é usado"

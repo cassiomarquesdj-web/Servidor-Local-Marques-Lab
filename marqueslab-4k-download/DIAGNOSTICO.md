@@ -22,6 +22,50 @@ Apple Silicon (arm64).
 exatamente uma coisa: as credenciais da Apple. Todo o resto está implementado,
 versionado e testado. O passo a passo está em [DISTRIBUICAO.md](DISTRIBUICAO.md).
 
+## Falha em produção corrigida em 21/08/2026
+
+O primeiro download real do usuário falhou com
+`ERROR: unable to download video data: HTTP Error 403: Forbidden`.
+
+**Causa raiz:** o yt-dlp estável 2026.7.4 usava o player client `android_vr`,
+que o YouTube passou a bloquear na entrega da mídia. A extração de metadados
+funcionava — o erro só aparecia na hora de baixar. Reproduzido e isolado:
+
+| yt-dlp | Cliente usado | Resultado |
+| --- | --- | --- |
+| 2026.7.4 (estável) | `android_vr` | ❌ HTTP 403 |
+| 2026.8.20 (nightly) | `visionos` | ✅ download completo |
+
+Trocar de player client manualmente não resolvia: `web`, `ios`, `mweb` e
+`web_safari` não retornavam formato algum, e `tv` respondia "The page needs to
+be reloaded". A correção real é o extrator atualizado.
+
+**Correções aplicadas:**
+
+1. O yt-dlp passou a seguir o canal **nightly** (`yt-dlp>=2026.8.20.dev0`). O
+   sufixo `.dev0` no especificador faz o pip aceitar pré-lançamentos apenas
+   para esse pacote, sem `--pre` global. Um extrator estável de sete semanas
+   atrás é garantia de quebra em um app de download.
+2. Mensagens de erro acionáveis: `HTTP 403` agora explica que a fonte mudou a
+   entrega e que o aplicativo precisa ser atualizado, com o texto original do
+   yt-dlp disponível em "Detalhes". O mesmo vale para formato indisponível,
+   vídeo privado, restrição de idade e site não suportado.
+3. A janela "Sobre" mostra a versão do extrator embarcado — primeiro dado a
+   conferir quando um site começa a recusar downloads.
+4. Teste que trava a escolha do canal: se alguém voltar o yt-dlp para o canal
+   estável, a suíte falha.
+
+**Verificação:** o vídeo exato que falhou foi baixado com sucesso pela engine
+corrigida — MP4 720p, 171,5 MB, áudio e vídeo mesclados.
+
+### Limitação conhecida
+
+O aplicativo não embarca um runtime JavaScript (Deno/Node). Se o YouTube exigir
+a resolução do desafio `n` para alguma mídia, o yt-dlp precisará de um runtime
+JS que o bundle não tem, e essa mídia específica pode falhar. As mídias que usam
+o cliente `visionos` — o caminho atual — não passam por esse desafio. Embarcar
+o Deno (~40 MB) é a solução se isso passar a acontecer com frequência.
+
 ## Defeitos corrigidos
 
 1. **FFmpeg embarcado nunca era encontrado no app empacotado.**
