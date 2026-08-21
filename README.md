@@ -2,7 +2,21 @@
 
 Ferramentas locais do Marques Lab que rodam na rede Wi-Fi/LAN, sem depender de internet.
 
-## Projeto neste repositório
+## Projetos neste repositório
+
+### [`marqueslab-4k-download`](marqueslab-4k-download) — Marques Lab 4K Download
+
+Gerenciador de downloads de mídia para **macOS**, distribuído como aplicativo
+nativo assinado e notarizado.
+
+- Fila com progresso, velocidade, ETA, cancelamento e nova tentativa
+- MP4 até 4K e MP3 320 kbps, com FFmpeg embarcado no aplicativo
+- O usuário baixa o DMG, arrasta para `Applications` e abre — sem Terminal,
+  sem Python, sem instalar dependências
+- Pipeline completo de assinatura Developer ID, notarização Apple, staple,
+  validação de Gatekeeper e publicação automática do release
+
+Estado atual e o que falta: [`marqueslab-4k-download/DIAGNOSTICO.md`](marqueslab-4k-download/DIAGNOSTICO.md).
 
 ### [`ui16-iphone`](ui16-iphone) — UI16 Control
 
