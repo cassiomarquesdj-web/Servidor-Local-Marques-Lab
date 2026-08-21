@@ -14,6 +14,10 @@ sem Python, sem FFmpeg, sem instalar dependência nenhuma.**
 - **Análise da fonte** em segundo plano: título, canal, duração, maior altura
   disponível e número de itens de playlist, sem travar a interface.
 - **MP4** até 2160p/1440p/1080p/720p ou a melhor qualidade disponível.
+- **Perfil compatível com Premiere Pro e After Effects** (H.264 + AAC), ligado por
+  padrão. O YouTube entrega AV1/Opus por padrão, que os dois editores recusam; até
+  1080p o arquivo chega pronto, sem reconversão. Acima disso o FFmpeg embarcado
+  converte usando o encoder de hardware da Apple, com progresso na fila.
 - **MP3 320 kbps** com metadados, extraído pelo FFmpeg embarcado.
 - **Cancelar, tentar novamente, remover selecionados e limpar concluídos** sem
   corromper a fila em andamento.

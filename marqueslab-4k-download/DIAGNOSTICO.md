@@ -66,6 +66,48 @@ JS que o bundle não tem, e essa mídia específica pode falhar. As mídias que 
 o cliente `visionos` — o caminho atual — não passam por esse desafio. Embarcar
 o Deno (~40 MB) é a solução se isso passar a acontecer com frequência.
 
+## Incompatibilidade com Premiere / After Effects corrigida em 21/08/2026
+
+O MP4 baixado abria em qualquer player e era recusado pelo Premiere Pro e pelo
+After Effects: *"o arquivo possui uma compactação não suportada"*.
+
+**Causa raiz:** o seletor `bestvideo+bestaudio` pega o que o YouTube considera
+melhor — e o YouTube prefere **AV1** com áudio **Opus**. O arquivo entregue era:
+
+```
+Video: av1 (libdav1d) (av01)  1920x1080  2572 kb/s
+Audio: opus (Opus)            48000 Hz   108 kb/s
+```
+
+Nenhum dos dois codecs é suportado nativamente pelo Premiere ou pelo After
+Effects. O contêiner `.mp4` estava correto; o conteúdo é que não era editável.
+
+**Correção:** o modo de vídeo passou a ter um perfil **Compatível com Premiere /
+After Effects**, ligado por padrão, que pede H.264 + AAC diretamente à fonte:
+
+```
+bestvideo[vcodec^=avc1][height<=N]+bestaudio[acodec^=mp4a]/…
+```
+
+O YouTube serve H.264 e AAC até 1080p, então **até 1080p não há reconversão
+alguma** — o arquivo chega editável, no stream original, sem perda. Medido no
+vídeo que falhou: 100 s de download, zero conversão, resultado
+`h264 (High) / aac (LC)`, 449 MB.
+
+Acima de 1080p o YouTube só oferece VP9/AV1. Nesse caso o FFmpeg embarcado
+converte para H.264/AAC, preferindo o encoder de hardware da Apple
+(`h264_videotoolbox`, ~2,5× mais rápido que o libx264 nesta máquina) e copiando
+o stream que já estiver correto — um arquivo com vídeo H.264 e áudio Opus
+reconverte só o áudio, em segundos. A conversão mostra progresso real na fila.
+
+Quem quiser o arquivo menor e de maior qualidade para reprodução pode desmarcar
+a opção e receber AV1/VP9 — mas aí o Premiere não abre, e agora isso é uma
+escolha explícita em vez de uma surpresa.
+
+Um teste pegou um defeito nessa correção antes de ela chegar ao usuário: a
+conversão mantinha a extensão de origem, e WebM não aceita H.264/AAC. A saída
+agora é sempre `.mp4`.
+
 ## Defeitos corrigidos
 
 1. **FFmpeg embarcado nunca era encontrado no app empacotado.**

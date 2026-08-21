@@ -1,7 +1,7 @@
 import pytest
 
 from engine import (
-    VIDEO_SELECTORS, DownloadEngine, choose_audio, choose_video, format_bytes,
+    VIDEO_QUALITIES, VIDEO_SELECTORS, video_selector, DownloadEngine, choose_audio, choose_video, format_bytes,
     format_duration, normalize_url, safe_filename, split_urls,
 )
 
@@ -47,7 +47,30 @@ def test_video_selectors(quality, expected):
 
 def test_unknown_quality_falls_back_to_best():
     assert choose_video("8000p").quality == "best"
-    assert choose_video("best").format_selector == VIDEO_SELECTORS["best"]
+    assert choose_video("best", editable=False).format_selector == VIDEO_SELECTORS["best"]
+
+
+def test_editable_profile_asks_for_h264_and_aac_first():
+    """Premiere and After Effects reject the AV1/Opus streams YouTube prefers."""
+    choice = choose_video("1080p")
+    assert choice.editable is True
+    first_branch = choice.format_selector.split("/")[0]
+    assert "vcodec^=avc1" in first_branch
+    assert "acodec^=mp4a" in first_branch
+    assert "height<=1080" in first_branch
+
+
+def test_editable_profile_is_the_default():
+    assert choose_video().editable is True
+    assert choose_video("720p", editable=False).editable is False
+    assert "avc1" not in choose_video("720p", editable=False).format_selector
+
+
+def test_every_selector_ends_with_an_unconstrained_fallback():
+    """A source with no declared height must still resolve to something."""
+    for quality in VIDEO_QUALITIES:
+        for editable in (True, False):
+            assert video_selector(quality, editable=editable).split("/")[-1] == "best"
 
 
 def test_audio_choice():

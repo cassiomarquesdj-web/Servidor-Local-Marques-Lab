@@ -33,6 +33,7 @@ ICON_PATH = Path(__file__).resolve().parent / "assets" / "AppIcon.icns"
 class JobStatus(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
+    CONVERTING = "converting"
     DONE = "done"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -41,6 +42,7 @@ class JobStatus(str, Enum):
 STATUS_LABEL = {
     JobStatus.QUEUED: "⏳ Na fila",
     JobStatus.RUNNING: "🔄 Baixando",
+    JobStatus.CONVERTING: "🎬 Convertendo",
     JobStatus.DONE: "✅ Concluído",
     JobStatus.FAILED: "❌ Falhou",
     JobStatus.CANCELLED: "⏹ Cancelado",
@@ -69,7 +71,8 @@ class QueueJob:
     def format_label(self) -> str:
         if self.choice.mode == "audio":
             return f"MP3 • {self.choice.quality}"
-        return f"MP4 • {self.choice.quality}"
+        profile = "H.264" if self.choice.editable else "máxima"
+        return f"MP4 • {self.choice.quality} • {profile}"
 
     @property
     def is_pending(self) -> bool:
@@ -221,6 +224,13 @@ class MainWindow(QMainWindow):
         self.quality = QComboBox()
         self.quality.addItems(["Melhor disponível", "2160p • 4K", "1440p", "1080p", "720p"])
         self.playlist = QCheckBox("Baixar playlist quando a fonte oferecer")
+        self.editable = QCheckBox("Compatível com Premiere / After Effects")
+        self.editable.setToolTip(
+            "Entrega H.264 + AAC, que o Premiere Pro e o After Effects abrem.\n"
+            "Sem isto o YouTube entrega AV1 ou VP9 com áudio Opus, que os dois recusam.\n"
+            "Até 1080p o arquivo já vem pronto, sem reconversão."
+        )
+        self.editable.setChecked(self.settings.value("editable", True, type=bool))
         self.folder_btn = QPushButton("PASTA DE SAÍDA")
         self.open_folder_btn = QPushButton("ABRIR PASTA")
         options.addWidget(QLabel("Formato:"))
@@ -228,6 +238,7 @@ class MainWindow(QMainWindow):
         options.addWidget(QLabel("Qualidade:"))
         options.addWidget(self.quality)
         options.addWidget(self.playlist)
+        options.addWidget(self.editable)
         options.addStretch(1)
         options.addWidget(self.folder_btn)
         options.addWidget(self.open_folder_btn)
@@ -297,6 +308,7 @@ class MainWindow(QMainWindow):
         self.folder_btn.clicked.connect(self.choose_folder)
         self.open_folder_btn.clicked.connect(self.open_folder)
         self.mode.currentIndexChanged.connect(self._sync_quality)
+        self.editable.toggled.connect(lambda on: self.settings.setValue("editable", on))
         self.queue.itemDoubleClicked.connect(self._reveal_item)
         self._load_history()
         self._sync_quality()
@@ -351,13 +363,15 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------------- helpers
     def _sync_quality(self):
-        self.quality.setEnabled(self.mode.currentIndex() == 0)
+        is_video = self.mode.currentIndex() == 0
+        self.quality.setEnabled(is_video)
+        self.editable.setEnabled(is_video)
 
     def _choice(self) -> MediaChoice:
         if self.mode.currentIndex() == 1:
             return choose_audio()
         labels = {0: "best", 1: "2160p", 2: "1440p", 3: "1080p", 4: "720p"}
-        return choose_video(labels[self.quality.currentIndex()])
+        return choose_video(labels[self.quality.currentIndex()], editable=self.editable.isChecked())
 
     def _urls(self) -> list[str]:
         return split_urls(self.url.text())
@@ -503,6 +517,20 @@ class MainWindow(QMainWindow):
         info = data.get("info_dict") or {}
         if not job.title and info.get("title"):
             job.title = info["title"]
+
+        status = data.get("status")
+        if status in {"converting", "converted"}:
+            job.status = JobStatus.CONVERTING if status == "converting" else JobStatus.RUNNING
+            job.percent = int(data.get("percent") or 0)
+            job.speed = "—"
+            self.progress.setValue(job.percent)
+            what = "áudio" if data.get("conversion") == "audio" else "vídeo"
+            self.info.setText(
+                f"Convertendo {what} para H.264/AAC — compatível com Premiere • {job.percent}%"
+                if status == "converting" else "Conversão concluída."
+            )
+            self._refresh_row(self.active_index)
+            return
         total = data.get("total_bytes") or data.get("total_bytes_estimate")
         done = data.get("downloaded_bytes") or 0
         if total:

@@ -161,3 +161,44 @@ def test_invalid_url_does_not_enqueue(window, monkeypatch):
     window.add_to_queue()
     assert window.jobs == []
     assert warnings
+
+
+def test_editable_checkbox_is_on_by_default_and_reaches_the_engine(window):
+    assert window.editable.isChecked() is True
+    assert window._choice().editable is True
+    assert "vcodec^=avc1" in window._choice().format_selector
+
+    window.editable.setChecked(False)
+    assert window._choice().editable is False
+    assert "vcodec^=avc1" not in window._choice().format_selector
+
+
+def test_editable_checkbox_only_applies_to_video(window):
+    window.mode.setCurrentIndex(1)
+    assert window.editable.isEnabled() is False
+    window.mode.setCurrentIndex(0)
+    assert window.editable.isEnabled() is True
+
+
+def test_queue_row_shows_the_profile(window):
+    window.editable.setChecked(True)
+    window.quality.setCurrentIndex(3)
+    window.url.setText("https://example.com/a")
+    window.add_to_queue()
+    assert window.items[0].text(2) == "MP4 • 1080p • H.264"
+
+
+def test_conversion_progress_is_reported_in_the_queue(window):
+    window.url.setText("https://example.com/a")
+    window.add_to_queue()
+    window.active_index = 0
+    window.jobs[0].status = JobStatus.RUNNING
+    window.on_progress({"status": "converting", "percent": 42, "conversion": "video"})
+
+    assert window.jobs[0].status is JobStatus.CONVERTING
+    assert window.items[0].text(3) == "42%"
+    assert "Premiere" in window.info.text()
+
+    window.on_progress({"status": "converted", "percent": 100})
+    assert window.jobs[0].status is JobStatus.RUNNING
+    assert window.jobs[0].percent == 100

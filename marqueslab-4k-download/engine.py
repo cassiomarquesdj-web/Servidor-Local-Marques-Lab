@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import subprocess
 import sys
 import threading
 from dataclasses import dataclass, field
@@ -25,12 +26,47 @@ except ImportError:  # pragma: no cover - optional at runtime
     imageio_ffmpeg = None
 
 
+VIDEO_QUALITIES: tuple[str, ...] = ("best", "2160p", "1440p", "1080p", "720p")
+
+# Codecs that Premiere Pro and After Effects open natively. YouTube's "best"
+# streams are AV1 or VP9 with Opus audio: they play fine in a browser and are
+# rejected by both editors, which is why the editable profile is the default.
+EDITABLE_VIDEO_CODECS = frozenset({"h264"})
+EDITABLE_AUDIO_CODECS = frozenset({"aac"})
+
+_STREAM_LINE = re.compile(r"Stream #\d+:\d+.*?: (Video|Audio): (\w+)")
+_DURATION_LINE = re.compile(r"Duration: (\d+):(\d+):(\d+\.\d+)")
+_PROGRESS_TIME = re.compile(r"out_time_ms=(\d+)")
+
+
+def _height_filter(quality: str) -> str:
+    return "" if quality == "best" else f"[height<={quality.rstrip('p')}]"
+
+
+def video_selector(quality: str, *, editable: bool) -> str:
+    """Build the yt-dlp format selector for a quality preset.
+
+    When `editable` is set the selector asks for H.264 video and AAC audio
+    first, which YouTube serves up to 1080p. That avoids re-encoding entirely
+    for the common case — the file arrives already editable and untouched.
+    """
+    height = _height_filter(quality)
+    # The trailing bare "best" matters: sources that expose a single stream with
+    # no declared height (a direct .mp4 link, for instance) are filtered out by
+    # every height-constrained branch and would otherwise fail outright.
+    fallback = f"bestvideo{height}+bestaudio/best{height}/best"
+    if not editable:
+        return fallback
+    return (
+        f"bestvideo[vcodec^=avc1]{height}+bestaudio[acodec^=mp4a]/"
+        f"bestvideo[vcodec^=avc1]{height}+bestaudio/"
+        f"best[vcodec^=avc1]{height}/"
+        f"{fallback}"
+    )
+
+
 VIDEO_SELECTORS: dict[str, str] = {
-    "2160p": "bestvideo[height<=2160]+bestaudio/best[height<=2160]/best",
-    "1440p": "bestvideo[height<=1440]+bestaudio/best[height<=1440]/best",
-    "1080p": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
-    "720p": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
-    "best": "bestvideo+bestaudio/best",
+    quality: video_selector(quality, editable=False) for quality in VIDEO_QUALITIES
 }
 
 
@@ -40,6 +76,7 @@ class MediaChoice:
     quality: str
     format_selector: str
     extension: str
+    editable: bool = False
 
 
 @dataclass
@@ -87,9 +124,15 @@ def safe_filename(name: str) -> str:
     return name[:180] or "MarquesLab_Media"
 
 
-def choose_video(quality: str = "best") -> MediaChoice:
-    quality = quality if quality in VIDEO_SELECTORS else "best"
-    return MediaChoice("video", quality, VIDEO_SELECTORS[quality], "mp4")
+def choose_video(quality: str = "best", *, editable: bool = True) -> MediaChoice:
+    """Pick a video profile.
+
+    `editable=True` guarantees a file Premiere Pro and After Effects can open:
+    H.264 video with AAC audio, converted with the bundled FFmpeg only when the
+    source has nothing compatible to offer (YouTube has no H.264 above 1080p).
+    """
+    quality = quality if quality in VIDEO_QUALITIES else "best"
+    return MediaChoice("video", quality, video_selector(quality, editable=editable), "mp4", editable)
 
 
 def choose_audio(bitrate: str = "320") -> MediaChoice:
@@ -308,6 +351,11 @@ class DownloadEngine:
         finally:
             self._cancel_event.clear()
         files = [p for p in self._produced if p.exists()]
+        if choice.mode == "video" and choice.editable:
+            files = [
+                ensure_editable(path, self.progress, self._cancel_event.is_set)
+                for path in files
+            ]
         return DownloadResult(files=files, titles=list(self._titles))
 
     def cancel(self) -> None:
@@ -375,6 +423,111 @@ _FRIENDLY_ERRORS: tuple[tuple[str, str], ...] = (
         "Sem conexão com a internet ou o endereço não pôde ser resolvido.",
     ),
 )
+
+
+def probe_media(path: Path) -> tuple[str | None, str | None, float | None]:
+    """Return (video codec, audio codec, duration) using FFmpeg alone.
+
+    ffprobe is deliberately not required: the distributed application bundles
+    FFmpeg only, so every media inspection must work with that single binary.
+    """
+    ffmpeg = require_ffmpeg()
+    result = subprocess.run(
+        [ffmpeg, "-hide_banner", "-i", str(path)],
+        capture_output=True, text=True,
+    )
+    banner = result.stderr
+    video = audio = None
+    for kind, codec in _STREAM_LINE.findall(banner):
+        if kind == "Video" and video is None:
+            video = codec
+        elif kind == "Audio" and audio is None:
+            audio = codec
+    duration = None
+    match = _DURATION_LINE.search(banner)
+    if match:
+        hours, minutes, seconds = match.groups()
+        duration = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    return video, audio, duration
+
+
+def _h264_encoder(ffmpeg: str) -> list[str]:
+    """Prefer Apple's hardware encoder: ~2.5x faster than libx264 on Apple Silicon."""
+    encoders = subprocess.run(
+        [ffmpeg, "-hide_banner", "-encoders"], capture_output=True, text=True
+    ).stdout
+    if "h264_videotoolbox" in encoders:
+        return ["-c:v", "h264_videotoolbox", "-profile:v", "high", "-q:v", "65"]
+    return ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-profile:v", "high"]
+
+
+def ensure_editable(
+    path: Path,
+    progress: Callable[[dict], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
+) -> Path:
+    """Guarantee that `path` opens in Premiere Pro and After Effects.
+
+    Streams that are already H.264/AAC are copied instead of re-encoded, so a
+    file that only has the wrong audio costs seconds rather than minutes.
+    """
+    video, audio, duration = probe_media(path)
+    video_ok = video in EDITABLE_VIDEO_CODECS
+    audio_ok = audio in EDITABLE_AUDIO_CODECS or audio is None
+    if video_ok and audio_ok:
+        return path
+
+    ffmpeg = require_ffmpeg()
+    # The output container must be MP4: WebM only accepts VP8/VP9/AV1 with
+    # Vorbis/Opus, so writing H.264/AAC into the source extension fails outright.
+    final = path.with_suffix(".mp4")
+    target = path.with_name(f"{path.stem}.editavel.mp4")
+    command = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(path)]
+    command += ["-c:v", "copy"] if video_ok else _h264_encoder(ffmpeg)
+    if not video_ok:
+        command += ["-pix_fmt", "yuv420p"]
+    command += ["-c:a", "copy"] if audio_ok else ["-c:a", "aac", "-b:a", "320k"]
+    command += ["-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(target)]
+
+    report = progress or (lambda _: None)
+    report({
+        "status": "converting",
+        "info_dict": {"filepath": str(path)},
+        "conversion": "video" if not video_ok else "audio",
+        "percent": 0,
+    })
+
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        for line in process.stdout or ():
+            if cancelled and cancelled():
+                process.kill()
+                raise DownloadCancelled("Conversão cancelada pelo usuário")
+            match = _PROGRESS_TIME.search(line)
+            if match and duration:
+                done = int(match.group(1)) / 1_000_000
+                report({
+                    "status": "converting",
+                    "info_dict": {"filepath": str(path)},
+                    "conversion": "video" if not video_ok else "audio",
+                    "percent": max(0, min(100, int(done * 100 / duration))),
+                })
+        process.wait()
+    finally:
+        if process.poll() is None:
+            process.kill()
+
+    if process.returncode != 0:
+        target.unlink(missing_ok=True)
+        raise RuntimeError(
+            "Falha ao converter a mídia para H.264/AAC: "
+            + (process.stderr.read().strip() if process.stderr else "erro desconhecido")
+        )
+
+    path.unlink(missing_ok=True)
+    target.replace(final)
+    report({"status": "converted", "info_dict": {"filepath": str(final)}, "percent": 100})
+    return final
 
 
 def friendly_error(message: str) -> str:
