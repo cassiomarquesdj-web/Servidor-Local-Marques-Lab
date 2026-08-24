@@ -388,10 +388,10 @@ class DownloadEngine:
             # a failed probe tells us nothing and must not invent a warning.
             if video is not None and audio is None:
                 warnings.append(
-                    f"\"{path.name}\" foi baixado SEM faixa de áudio. A fonte não "
-                    "disponibilizou áudio para este acesso. No Instagram isso "
-                    "acontece com quem não está autenticado: ative \"Usar sessão "
-                    "do navegador\" nas opções e baixe de novo."
+                    f"\"{path.name}\" não tem faixa de áudio. Ou a mídia é muda na "
+                    "origem, ou a fonte não liberou o áudio para este acesso. Se for "
+                    "conteúdo restrito ou de conta privada, escolha a sessão do "
+                    "navegador nas opções e baixe de novo."
                 )
         return warnings
 

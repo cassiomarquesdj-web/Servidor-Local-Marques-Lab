@@ -110,44 +110,37 @@ agora é sempre `.mp4`.
 
 ## Suporte ao Instagram — 21/08/2026
 
-O motor já reconhecia URLs do Instagram (o extrator faz parte do yt-dlp), mas o
-resultado era inutilizável para edição. Medido, não suposto:
+**Correção de um diagnóstico errado meu.** A primeira conclusão foi que o
+Instagram não entrega áudio sem login. Ela veio de um único reel de teste — que
+era simplesmente um vídeo mudo (`has_audio=False` na origem). Generalização
+indevida a partir de uma amostra.
+
+Medição correta, em conteúdo público, sem nenhuma autenticação:
 
 ```
-formatos oferecidos a um acesso anônimo (reel público):
-  0, 1, 2                 mp4  vcodec desconhecido  acodec=none
-  dash-…v  (6 variantes)  mp4  avc1.64001F          acodec=none
-representações DASH: 6 — sufixos: ['v']   ('v'=vídeo, 'a'=áudio)
+DcbaIFcyXd9   vídeo=h264   ÁUDIO=aac   23,45 s   8,3 MB   0 avisos
+DcOkE0Myfhh   vídeo=h264   ÁUDIO=aac   12,87 s   2,4 MB   0 avisos
 ```
 
-**O manifesto DASH que o Instagram envia para quem não está logado não tem
-nenhuma representação de áudio.** Os três seletores testados (`0`,
-`bestvideo+bestaudio/best` e `best`) produziram arquivo mudo. Não existe seletor
-de formato capaz de recuperar uma faixa que o servidor nunca envia — e parte das
-publicações nem responde, retornando *"Instagram sent an empty media response"*.
+**Instagram público funciona sem login, com áudio, exatamente como o YouTube** —
+e já sai em H.264 + AAC, sem reconversão, pronto para o After Effects.
 
-O que foi implementado:
+O que exige sessão autenticada é apenas o que o próprio site esconde de
+visitantes: contas privadas, publicações restritas e stories. Isso é decisão do
+Instagram e não há contorno legítimo.
 
-1. **Sessão do navegador (opt-in, desligada por padrão).** Um seletor na
-   interface reaproveita os cookies de um navegador em que o usuário já está
-   logado. Os cookies são lidos localmente e enviados apenas ao próprio site.
-   Não é contorno de login: o que a conta não acessa continua inacessível.
-2. **Detecção de mídia muda.** Ao final do download o arquivo é inspecionado; se
-   houver stream de vídeo e nenhum de áudio, a linha da fila vira
-   `⚠️ Sem áudio` e o usuário recebe um aviso explicando o motivo. Antes o app
-   entregaria um clipe mudo em silêncio — falha grave para quem edita.
-   A afirmação só é feita quando o vídeo foi realmente identificado: sonda que
-   falha não inventa aviso.
+O que ficou implementado:
+
+1. **Sessão do navegador (opt-in, desligada por padrão)** para esse caso
+   restrito. Cookies lidos localmente, enviados apenas ao próprio site. Não é
+   contorno de login: o que a conta não acessa continua inacessível.
+2. **Detecção de mídia muda**, com o texto corrigido: um arquivo sem faixa de
+   áudio pode ser mudo na origem — o aviso apresenta as duas possibilidades em
+   vez de afirmar que falta login.
 3. **Mensagens específicas** para resposta vazia do Instagram, exigência de
    login e limite de requisições.
-4. **Compatibilidade com After Effects mantida**: o Instagram entrega
-   `avc1` (H.264), então o perfil editável não reconverte nada — o arquivo chega
-   pronto. Verificado: `vídeo=h264`, MP4, 4,97 s.
-
-### Limitação honesta
-
-Sem sessão autenticada, o Instagram entrega vídeo sem áudio e bloqueia
-publicações restritas, stories e contas fechadas. Isso é imposto pelo servidor.
+4. **Compatibilidade com After Effects**: o Instagram entrega `avc1`, então o
+   perfil editável não reconverte nada.
 
 ## Defeitos corrigidos
 

@@ -268,14 +268,16 @@ class MainWindow(QMainWindow):
         self.browser.setCurrentIndex(int(self.settings.value("browser_index", 0)))
         self.browser.setToolTip(
             "Reaproveita a sessão já autenticada do navegador escolhido.\n"
-            "Necessário para o Instagram: sem login, o servidor envia o vídeo SEM áudio.\n"
-            "Os cookies são lidos localmente e enviados apenas ao próprio site.\n"
-            "Não é contorno de login: o que a sua conta não acessa continua inacessível."
+            "Conteúdo público do Instagram e do YouTube baixa sem isto, com áudio.\n"
+            "Use para o que o site esconde de visitantes: conta privada, post\n"
+            "restrito e stories. Os cookies são lidos localmente e enviados apenas\n"
+            "ao próprio site. Não é contorno de login: o que a sua conta não\n"
+            "acessa continua inacessível."
         )
         session_row.addWidget(QLabel("Sessão do navegador:"))
         session_row.addWidget(self.browser)
         self.session_hint = QLabel(
-            "Sem sessão, o Instagram entrega vídeo mudo e bloqueia conteúdo restrito."
+            "Conteúdo público não precisa de sessão. Use apenas para conta privada ou restrita."
         )
         self.session_hint.setObjectName("subtitle")
         session_row.addWidget(self.session_hint)
@@ -408,7 +410,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("browser_index", index)
         session = self._browser_session()
         self.session_hint.setText(
-            "Sem sessão, o Instagram entrega vídeo mudo e bloqueia conteúdo restrito."
+            "Conteúdo público não precisa de sessão. Use apenas para conta privada ou restrita."
             if session is None
             else f"Usando a sessão do {BROWSER_SESSIONS[index][0]} — o macOS pode pedir acesso ao Chaveiro."
         )

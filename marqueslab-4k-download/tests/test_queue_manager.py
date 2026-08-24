@@ -219,7 +219,7 @@ def test_browser_session_reaches_the_worker(window):
 
     window.browser.setCurrentIndex(0)
     assert window._browser_session() is None
-    assert "mudo" in window.session_hint.text()
+    assert "público" in window.session_hint.text()
 
 
 def test_silent_result_is_marked_in_the_queue(window, monkeypatch):

@@ -1,10 +1,12 @@
 """Instagram support: session handling, silent-media detection and messaging.
 
-Instagram serves a stripped DASH manifest to anonymous requests — video
-representations only, no audio adaptation set. No format selector can recover a
-track the server never sends, so the engine must (a) be able to reuse the user's
-own logged-in browser session and (b) never hand an editor a mute file without
-saying so.
+Public Instagram posts download anonymously with audio, exactly like YouTube —
+measured: H.264 video with AAC audio, no conversion needed for After Effects.
+A browser session is only required for what the site itself withholds from
+anonymous visitors: private accounts, restricted posts and stories.
+
+A file with no audio track is not proof of a login wall — the media may simply
+be silent — so the warning must state both possibilities.
 """
 from __future__ import annotations
 
@@ -50,7 +52,8 @@ def test_silent_download_is_flagged(tmp_path, ffmpeg_bin):
     silent = render_silent(ffmpeg_bin, tmp_path / "reel.mp4")
     warnings = engine._audio_warnings([silent])
     assert warnings
-    assert "SEM faixa de áudio" in warnings[0]
+    assert "não tem faixa de áudio" in warnings[0]
+    assert "muda na origem" in warnings[0], "não afirme login sem saber: a mídia pode ser muda"
     assert "sessão do navegador" in warnings[0]
     assert "reel.mp4" in warnings[0]
 
