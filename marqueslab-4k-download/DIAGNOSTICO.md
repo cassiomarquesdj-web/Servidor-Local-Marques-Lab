@@ -108,6 +108,47 @@ Um teste pegou um defeito nessa correção antes de ela chegar ao usuário: a
 conversão mantinha a extensão de origem, e WebM não aceita H.264/AAC. A saída
 agora é sempre `.mp4`.
 
+## Suporte ao Instagram — 21/08/2026
+
+O motor já reconhecia URLs do Instagram (o extrator faz parte do yt-dlp), mas o
+resultado era inutilizável para edição. Medido, não suposto:
+
+```
+formatos oferecidos a um acesso anônimo (reel público):
+  0, 1, 2                 mp4  vcodec desconhecido  acodec=none
+  dash-…v  (6 variantes)  mp4  avc1.64001F          acodec=none
+representações DASH: 6 — sufixos: ['v']   ('v'=vídeo, 'a'=áudio)
+```
+
+**O manifesto DASH que o Instagram envia para quem não está logado não tem
+nenhuma representação de áudio.** Os três seletores testados (`0`,
+`bestvideo+bestaudio/best` e `best`) produziram arquivo mudo. Não existe seletor
+de formato capaz de recuperar uma faixa que o servidor nunca envia — e parte das
+publicações nem responde, retornando *"Instagram sent an empty media response"*.
+
+O que foi implementado:
+
+1. **Sessão do navegador (opt-in, desligada por padrão).** Um seletor na
+   interface reaproveita os cookies de um navegador em que o usuário já está
+   logado. Os cookies são lidos localmente e enviados apenas ao próprio site.
+   Não é contorno de login: o que a conta não acessa continua inacessível.
+2. **Detecção de mídia muda.** Ao final do download o arquivo é inspecionado; se
+   houver stream de vídeo e nenhum de áudio, a linha da fila vira
+   `⚠️ Sem áudio` e o usuário recebe um aviso explicando o motivo. Antes o app
+   entregaria um clipe mudo em silêncio — falha grave para quem edita.
+   A afirmação só é feita quando o vídeo foi realmente identificado: sonda que
+   falha não inventa aviso.
+3. **Mensagens específicas** para resposta vazia do Instagram, exigência de
+   login e limite de requisições.
+4. **Compatibilidade com After Effects mantida**: o Instagram entrega
+   `avc1` (H.264), então o perfil editável não reconverte nada — o arquivo chega
+   pronto. Verificado: `vídeo=h264`, MP4, 4,97 s.
+
+### Limitação honesta
+
+Sem sessão autenticada, o Instagram entrega vídeo sem áudio e bloqueia
+publicações restritas, stories e contas fechadas. Isso é imposto pelo servidor.
+
 ## Defeitos corrigidos
 
 1. **FFmpeg embarcado nunca era encontrado no app empacotado.**

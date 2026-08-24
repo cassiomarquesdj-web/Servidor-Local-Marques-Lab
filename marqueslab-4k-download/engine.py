@@ -85,6 +85,7 @@ class DownloadResult:
 
     files: list[Path] = field(default_factory=list)
     titles: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def primary(self) -> Path | None:
@@ -228,11 +229,23 @@ class DownloadEngine:
         progress: Callable[[dict], None] | None = None,
         *,
         skip_duplicates: bool = False,
+        browser_session: str | None = None,
     ):
+        """`browser_session` reuses the user's own logged-in session.
+
+        Sources such as Instagram serve a stripped response to anonymous
+        requests — the DASH manifest they return has video representations only,
+        so the audio track is simply absent. Reading the cookies of a browser
+        the user is already logged into is the only way to receive the same
+        media the user sees on the site. It is off by default, never touches the
+        network beyond the source itself, and is not a login bypass: it fails
+        exactly like the browser would for content the account cannot access.
+        """
         self.output_dir = Path(output_dir).expanduser()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.progress = progress or (lambda _: None)
         self.skip_duplicates = skip_duplicates
+        self.browser_session = browser_session or None
         self._cancel_event = threading.Event()
         self._produced: list[Path] = []
         self._titles: list[str] = []
@@ -261,6 +274,8 @@ class DownloadEngine:
         }
         if self.skip_duplicates:
             opts["download_archive"] = str(self.output_dir / ".marqueslab-download-archive.txt")
+        if self.browser_session:
+            opts["cookiesfrombrowser"] = (self.browser_session,)
         ffmpeg = ffmpeg_executable()
         if ffmpeg:
             # yt-dlp accepts either the directory or the binary itself; passing
@@ -356,7 +371,29 @@ class DownloadEngine:
                 ensure_editable(path, self.progress, self._cancel_event.is_set)
                 for path in files
             ]
-        return DownloadResult(files=files, titles=list(self._titles))
+        warnings = self._audio_warnings(files) if choice.mode == "video" else []
+        return DownloadResult(files=files, titles=list(self._titles), warnings=warnings)
+
+    def _audio_warnings(self, files: list[Path]) -> list[str]:
+        """Flag silent results — a mute clip is a failure for an editor."""
+        warnings: list[str] = []
+        for path in files:
+            if not path.exists():
+                continue
+            try:
+                video, audio, _ = probe_media(path)
+            except Exception:  # noqa: BLE001 - inspection must never break a download
+                continue
+            # Only claim "silent" when a video stream was actually identified:
+            # a failed probe tells us nothing and must not invent a warning.
+            if video is not None and audio is None:
+                warnings.append(
+                    f"\"{path.name}\" foi baixado SEM faixa de áudio. A fonte não "
+                    "disponibilizou áudio para este acesso. No Instagram isso "
+                    "acontece com quem não está autenticado: ative \"Usar sessão "
+                    "do navegador\" nas opções e baixe de novo."
+                )
+        return warnings
 
     def cancel(self) -> None:
         self._cancel_event.set()
@@ -413,6 +450,23 @@ _FRIENDLY_ERRORS: tuple[tuple[str, str], ...] = (
     (
         "video unavailable",
         "A fonte informou que esta mídia não está disponível.",
+    ),
+    (
+        "empty media response",
+        "O Instagram não entregou a mídia para um acesso sem login. Publicações "
+        "privadas, de contas fechadas e stories exigem uma sessão autenticada. "
+        "Ative \"Usar sessão do navegador\" nas opções e faça login no Instagram "
+        "no navegador escolhido.",
+    ),
+    (
+        "login required",
+        "A fonte exige uma sessão autenticada. Ative \"Usar sessão do navegador\" "
+        "nas opções e faça login no site pelo navegador escolhido.",
+    ),
+    (
+        "rate-limit reached",
+        "A fonte aplicou limite de requisições. Espere alguns minutos antes de "
+        "tentar de novo, ou use a sessão do navegador para se identificar.",
     ),
     (
         "unsupported url",

@@ -50,6 +50,20 @@ STATUS_LABEL = {
 
 COLUMNS = ["Status", "Mídia", "Formato", "Progresso", "Velocidade"]
 
+# Sources such as Instagram serve a stripped response to anonymous requests —
+# no audio track at all. Reusing a browser the user is already logged into is
+# the only way to receive the same media the site shows them.
+BROWSER_SESSIONS: list[tuple[str, str | None]] = [
+    ("Nenhuma (somente conteúdo público)", None),
+    ("Chrome", "chrome"),
+    ("Firefox", "firefox"),
+    ("Safari", "safari"),
+    ("Edge", "edge"),
+    ("Brave", "brave"),
+    ("Opera", "opera"),
+    ("Vivaldi", "vivaldi"),
+]
+
 
 @dataclass
 class QueueJob:
@@ -62,6 +76,7 @@ class QueueJob:
     speed: str = "—"
     message: str = ""
     files: list[Path] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     @property
     def display_title(self) -> str:
@@ -89,16 +104,17 @@ class AnalyzeWorker(QObject):
     done = Signal(dict)
     failed = Signal(str)
 
-    def __init__(self, url: str, output: Path, playlist: bool):
+    def __init__(self, url: str, output: Path, playlist: bool, browser: str | None = None):
         super().__init__()
         self.url = url
         self.output = output
         self.playlist = playlist
+        self.browser = browser
 
     @Slot()
     def run(self):
         try:
-            engine = DownloadEngine(self.output)
+            engine = DownloadEngine(self.output, browser_session=self.browser)
             info = engine.analyze(self.url, playlist=self.playlist)
             self.done.emit(engine.summarize(info))
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
@@ -111,16 +127,17 @@ class DownloadWorker(QObject):
     cancelled = Signal()
     failed = Signal(str)
 
-    def __init__(self, job: QueueJob, output: Path):
+    def __init__(self, job: QueueJob, output: Path, browser: str | None = None):
         super().__init__()
         self.job = job
         self.output = output
+        self.browser = browser
         self.engine: DownloadEngine | None = None
 
     @Slot()
     def run(self):
         try:
-            self.engine = DownloadEngine(self.output, self.progress.emit)
+            self.engine = DownloadEngine(self.output, self.progress.emit, browser_session=self.browser)
             result = self.engine.download(self.job.url, self.job.choice, playlist=self.job.playlist)
             self.finished.emit(result)
         except DownloadCancelled:
@@ -244,6 +261,27 @@ class MainWindow(QMainWindow):
         options.addWidget(self.open_folder_btn)
         root_layout.addLayout(options)
 
+        session_row = QHBoxLayout()
+        self.browser = QComboBox()
+        for label, _ in BROWSER_SESSIONS:
+            self.browser.addItem(label)
+        self.browser.setCurrentIndex(int(self.settings.value("browser_index", 0)))
+        self.browser.setToolTip(
+            "Reaproveita a sessão já autenticada do navegador escolhido.\n"
+            "Necessário para o Instagram: sem login, o servidor envia o vídeo SEM áudio.\n"
+            "Os cookies são lidos localmente e enviados apenas ao próprio site.\n"
+            "Não é contorno de login: o que a sua conta não acessa continua inacessível."
+        )
+        session_row.addWidget(QLabel("Sessão do navegador:"))
+        session_row.addWidget(self.browser)
+        self.session_hint = QLabel(
+            "Sem sessão, o Instagram entrega vídeo mudo e bloqueia conteúdo restrito."
+        )
+        self.session_hint.setObjectName("subtitle")
+        session_row.addWidget(self.session_hint)
+        session_row.addStretch(1)
+        root_layout.addLayout(session_row)
+
         split = QSplitter(Qt.Vertical)
         queue_box = QGroupBox("Fila de downloads")
         queue_layout = QVBoxLayout(queue_box)
@@ -309,6 +347,7 @@ class MainWindow(QMainWindow):
         self.open_folder_btn.clicked.connect(self.open_folder)
         self.mode.currentIndexChanged.connect(self._sync_quality)
         self.editable.toggled.connect(lambda on: self.settings.setValue("editable", on))
+        self.browser.currentIndexChanged.connect(self._on_browser_changed)
         self.queue.itemDoubleClicked.connect(self._reveal_item)
         self._load_history()
         self._sync_quality()
@@ -362,6 +401,18 @@ class MainWindow(QMainWindow):
             )
 
     # --------------------------------------------------------------- helpers
+    def _browser_session(self) -> str | None:
+        return BROWSER_SESSIONS[self.browser.currentIndex()][1]
+
+    def _on_browser_changed(self, index: int):
+        self.settings.setValue("browser_index", index)
+        session = self._browser_session()
+        self.session_hint.setText(
+            "Sem sessão, o Instagram entrega vídeo mudo e bloqueia conteúdo restrito."
+            if session is None
+            else f"Usando a sessão do {BROWSER_SESSIONS[index][0]} — o macOS pode pedir acesso ao Chaveiro."
+        )
+
     def _sync_quality(self):
         is_video = self.mode.currentIndex() == 0
         self.quality.setEnabled(is_video)
@@ -379,7 +430,10 @@ class MainWindow(QMainWindow):
     def _refresh_row(self, index: int):
         job = self.jobs[index]
         item = self.items[index]
-        item.setText(0, STATUS_LABEL[job.status])
+        label = STATUS_LABEL[job.status]
+        if job.status is JobStatus.DONE and job.warnings:
+            label = "⚠️ Sem áudio"
+        item.setText(0, label)
         item.setText(1, job.display_title)
         item.setToolTip(1, f"{job.url}\n{job.message}".strip())
         item.setText(2, job.format_label)
@@ -416,7 +470,9 @@ class MainWindow(QMainWindow):
         self.analysis.setText("Analisando fonte…")
         self.analyze_btn.setEnabled(False)
         self._analyze_thread = QThread(self)
-        self._analyze_worker = AnalyzeWorker(urls[0], self.output_dir, self.playlist.isChecked())
+        self._analyze_worker = AnalyzeWorker(
+            urls[0], self.output_dir, self.playlist.isChecked(), self._browser_session()
+        )
         self._analyze_worker.moveToThread(self._analyze_thread)
         self._analyze_thread.started.connect(self._analyze_worker.run)
         self._analyze_worker.done.connect(self._on_analysis)
@@ -493,7 +549,7 @@ class MainWindow(QMainWindow):
         self.progress.setValue(0)
         self.info.setText(f"Baixando {index + 1}/{len(self.jobs)} — {job.display_title}")
         self._thread = QThread(self)
-        self._worker = DownloadWorker(job, self.output_dir)
+        self._worker = DownloadWorker(job, self.output_dir, self._browser_session())
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self.on_progress)
@@ -568,9 +624,13 @@ class MainWindow(QMainWindow):
             if result.titles and not job.title:
                 job.title = result.titles[0]
             job.message = "\n".join(str(p) for p in job.files)
+            job.warnings = list(result.warnings)
             self._refresh_row(index)
             self.progress.setValue(100)
             self._save_history(job.url, "concluído", job.display_title)
+            if job.warnings and not self._shutting_down:
+                self.info.setText(job.warnings[0])
+                QMessageBox.warning(self, "Download concluído com ressalva", "\n\n".join(job.warnings))
         self._next_or_finish()
 
     @Slot()

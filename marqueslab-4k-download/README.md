@@ -22,6 +22,13 @@ sem Python, sem FFmpeg, sem instalar dependência nenhuma.**
 - **Cancelar, tentar novamente, remover selecionados e limpar concluídos** sem
   corromper a fila em andamento.
 - **Duplo clique revela o arquivo no Finder**; itens com erro mostram o motivo.
+- **Instagram, YouTube e demais fontes suportadas pelo yt-dlp.**
+- **Sessão do navegador opcional** (desligada por padrão) para fontes que só
+  entregam a mídia completa a quem está autenticado — o Instagram envia vídeo
+  **sem áudio** para acessos anônimos. Os cookies são lidos localmente e enviados
+  apenas ao próprio site; não há contorno de login.
+- **Aviso de mídia muda**: se a fonte entregar vídeo sem faixa de áudio, o item
+  é marcado como `⚠️ Sem áudio` em vez de o arquivo passar despercebido.
 - **Histórico persistente** e pasta de saída lembrada entre sessões.
 
 O aplicativo não captura credenciais nem cookies e não implementa contorno de

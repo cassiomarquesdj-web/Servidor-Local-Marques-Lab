@@ -202,3 +202,37 @@ def test_conversion_progress_is_reported_in_the_queue(window):
     window.on_progress({"status": "converted", "percent": 100})
     assert window.jobs[0].status is JobStatus.RUNNING
     assert window.jobs[0].percent == 100
+
+
+def test_browser_session_defaults_to_none(window):
+    assert window._browser_session() is None
+    assert window.browser.currentIndex() == 0
+
+
+def test_browser_session_reaches_the_worker(window):
+    from app import BROWSER_SESSIONS
+
+    index = next(i for i, (_, key) in enumerate(BROWSER_SESSIONS) if key == "firefox")
+    window.browser.setCurrentIndex(index)
+    assert window._browser_session() == "firefox"
+    assert "Chaveiro" in window.session_hint.text()
+
+    window.browser.setCurrentIndex(0)
+    assert window._browser_session() is None
+    assert "mudo" in window.session_hint.text()
+
+
+def test_silent_result_is_marked_in_the_queue(window, monkeypatch):
+    from engine import DownloadResult
+
+    shown: list[str] = []
+    monkeypatch.setattr(app_module.QMessageBox, "warning", lambda *a: shown.append(a[-1]))
+    window.url.setText("https://www.instagram.com/reel/abc/")
+    window.add_to_queue()
+    window.active_index = 0
+    monkeypatch.setattr(MainWindow, "_next_or_finish", lambda self: None)
+
+    window.on_finished(DownloadResult(files=[], titles=["Reel"], warnings=["\"reel.mp4\" foi baixado SEM faixa de áudio."]))
+
+    assert window.items[0].text(0) == "⚠️ Sem áudio"
+    assert shown, "o usuário precisa ser avisado do vídeo mudo"
