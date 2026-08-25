@@ -11,7 +11,7 @@ from enum import Enum
 from pathlib import Path
 
 from PySide6 import QtCore
-from PySide6.QtCore import QObject, QSettings, Qt, QThread, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, QSettings, Qt, QThread, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QDesktopServices, QDragEnterEvent, QDropEvent, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QFileDialog,
@@ -150,6 +150,36 @@ class DownloadWorker(QObject):
             self.engine.cancel()
 
 
+class HistoryLoader(QObject):
+    """Reads the history file off the UI thread.
+
+    The output folder lives under ~/Downloads, which macOS protects with TCC.
+    The very first read blocks in the open() syscall until the user answers the
+    privacy prompt — so doing it on the main thread before the window exists
+    freezes the application with no window at all, which is indistinguishable
+    from a failure to launch.
+    """
+
+    loaded = Signal(str)
+
+    def __init__(self, path: Path):
+        super().__init__()
+        self.path = path
+
+    @Slot()
+    def run(self):
+        self.loaded.emit(read_history(self.path))
+
+
+def read_history(path: Path) -> str:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - history is best effort
+        return ""
+    lines = [f"{x['date']} • {x['status']} • {x.get('title') or x['url']}" for x in data[-30:]]
+    return "\n".join(reversed(lines))
+
+
 class DropLineEdit(QLineEdit):
     dropped = Signal(str)
 
@@ -194,12 +224,67 @@ class MainWindow(QMainWindow):
         self._worker: DownloadWorker | None = None
         self._analyze_thread: QThread | None = None
         self._analyze_worker: AnalyzeWorker | None = None
+        self._history_thread: QThread | None = None
+        self._history_worker: HistoryLoader | None = None
         self._shutting_down = False
         self.setWindowTitle(APP_NAME)
         self.resize(1180, 800)
         self._build()
         self._build_menu()
+        self._restore_geometry()
         self._check_ffmpeg()
+
+    # -------------------------------------------------------------- geometry
+    def _visible_on_some_screen(self) -> bool:
+        """True when a usable part of the window sits on a connected screen.
+
+        A window restored onto a monitor that is no longer attached — or placed
+        by the window system on a secondary display the user is not looking at —
+        is indistinguishable from an application that failed to start.
+        """
+        frame = self.frameGeometry()
+        for screen in QApplication.screens():
+            visible = screen.availableGeometry().intersected(frame)
+            if visible.width() >= 200 and visible.height() >= 120:
+                return True
+        return False
+
+    def center_on_primary(self):
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        self.resize(min(1180, area.width() - 60), min(800, area.height() - 60))
+        frame = self.frameGeometry()
+        frame.moveCenter(area.center())
+        self.move(frame.topLeft())
+
+    def _restore_geometry(self):
+        saved = self.settings.value("geometry")
+        restored = False
+        if saved is not None:
+            try:
+                restored = bool(self.restoreGeometry(saved))
+            except TypeError:  # settings written by another Qt build
+                restored = False
+        if not restored:
+            # With no geometry of its own the window is placed by the window
+            # server, which on a multi-monitor Mac can drop it on a secondary
+            # display at negative coordinates — invisible to a user looking at
+            # the built-in screen.
+            self.center_on_primary()
+
+    def ensure_visible(self):
+        """Correct the placement once the geometry is real.
+
+        Must run after show(): before the window is mapped, frameGeometry()
+        reports a placeholder that always looks on-screen, so checking earlier
+        silently passes and the window still lands on the wrong display.
+        """
+        if not self._visible_on_some_screen():
+            self.center_on_primary()
+        self.raise_()
+        self.activateWindow()
 
     # ---------------------------------------------------------------- layout
     def _build(self):
@@ -351,7 +436,6 @@ class MainWindow(QMainWindow):
         self.editable.toggled.connect(lambda on: self.settings.setValue("editable", on))
         self.browser.currentIndexChanged.connect(self._on_browser_changed)
         self.queue.itemDoubleClicked.connect(self._reveal_item)
-        self._load_history()
         self._sync_quality()
 
     def _build_menu(self):
@@ -731,12 +815,24 @@ class MainWindow(QMainWindow):
         return self.output_dir / ".marqueslab-history.json"
 
     def _load_history(self):
-        try:
-            data = json.loads(self.history_file.read_text(encoding="utf-8"))
-            lines = [f"{x['date']} • {x['status']} • {x.get('title') or x['url']}" for x in data[-30:]]
-            self.history.setPlainText("\n".join(reversed(lines)))
-        except Exception:  # noqa: BLE001 - history is best effort
-            self.history.clear()
+        """Load the history asynchronously — the first read may block on TCC."""
+        if self._history_thread and self._history_thread.isRunning():
+            return
+        self._history_thread = QThread(self)
+        self._history_worker = HistoryLoader(self.history_file)
+        self._history_worker.moveToThread(self._history_thread)
+        self._history_thread.started.connect(self._history_worker.run)
+        self._history_worker.loaded.connect(self._on_history_loaded)
+        self._history_thread.start()
+
+    @Slot(str)
+    def _on_history_loaded(self, text: str):
+        self.history.setPlainText(text)
+        if self._history_thread:
+            self._history_thread.quit()
+            self._history_thread.wait(3000)
+        self._history_thread = None
+        self._history_worker = None
 
     def _save_history(self, url: str, status: str, title: str = ""):
         try:
@@ -753,16 +849,20 @@ class MainWindow(QMainWindow):
             self.history_file.write_text(
                 json.dumps(data[-200:], ensure_ascii=False, indent=2), encoding="utf-8"
             )
-            self._load_history()
+            self.history.setPlainText(read_history(self.history_file))
         except Exception:  # noqa: BLE001 - history is best effort
             pass
 
     def closeEvent(self, event):
         self._shutting_down = True
+        self.settings.setValue("geometry", self.saveGeometry())
         if self._worker:
             self._worker.cancel()
         self._cleanup_thread()
         self._stop_analysis()
+        if self._history_thread:
+            self._history_thread.quit()
+            self._history_thread.wait(3000)
         event.accept()
 
 
@@ -908,6 +1008,13 @@ def main() -> int:
         app.setWindowIcon(QIcon(str(ICON_PATH)))
     window = MainWindow()
     window.show()
+    window.ensure_visible()
+    # Only now — with a window the user can see — may the app touch the
+    # TCC-protected output folder.
+    QTimer.singleShot(0, window._load_history)
+    # The window server can still relocate the window as it is mapped; re-check
+    # once the event loop is running.
+    QTimer.singleShot(0, window.ensure_visible)
     return app.exec()
 
 

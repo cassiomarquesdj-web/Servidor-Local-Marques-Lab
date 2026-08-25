@@ -1,6 +1,8 @@
 """Queue state machine of the desktop manager (headless Qt)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -154,6 +156,52 @@ def test_history_is_persisted_to_the_output_folder(window, tmp_path):
     assert "concluído" in window.history.toPlainText()
 
 
+def test_constructor_never_reads_the_protected_output_folder(qt_app, monkeypatch):
+    """macOS blocks the first read of ~/Downloads on a TCC prompt.
+
+    Doing it while building the window froze the app in the open() syscall with
+    no window at all — indistinguishable from a launch failure.
+    """
+    reads: list[str] = []
+    original = Path.read_text
+
+    def spy(self, *args, **kwargs):
+        reads.append(str(self))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(MainWindow, "_check_ffmpeg", lambda self: None)
+    monkeypatch.setattr(Path, "read_text", spy)
+    win = MainWindow()
+    try:
+        assert not [r for r in reads if "marqueslab-history" in r], (
+            f"o construtor leu a pasta protegida: {reads}"
+        )
+    finally:
+        win.close()
+
+
+def test_history_loads_asynchronously(window, tmp_path, qt_app):
+    import json
+
+    from app import read_history
+
+    window.output_dir = tmp_path
+    window.history_file.write_text(
+        json.dumps([{"date": "2026-08-24 10:00", "status": "concluído",
+                     "url": "https://example.com/a", "title": "Mídia"}]),
+        encoding="utf-8",
+    )
+    assert "concluído" in read_history(window.history_file)
+
+    window._load_history()
+    assert window._history_thread is not None, "a leitura precisa sair da thread principal"
+    for _ in range(100):
+        qt_app.processEvents()
+        if window._history_thread is None:
+            break
+    assert "concluído" in window.history.toPlainText()
+
+
 def test_invalid_url_does_not_enqueue(window, monkeypatch):
     warnings: list[str] = []
     monkeypatch.setattr(app_module.QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
@@ -236,3 +284,66 @@ def test_silent_result_is_marked_in_the_queue(window, monkeypatch):
 
     assert window.items[0].text(0) == "⚠️ Sem áudio"
     assert shown, "o usuário precisa ser avisado do vídeo mudo"
+
+
+def test_window_is_placed_on_a_visible_screen(window):
+    """A window opened on a disconnected or unattended monitor reads as a crash."""
+    assert window._visible_on_some_screen()
+
+
+def test_offscreen_geometry_is_recovered(window, qt_app):
+    """The bug: Qt placed the window on a second monitor at negative coordinates."""
+    window.move(-4000, -3000)
+    assert not window._visible_on_some_screen()
+
+    window.center_on_primary()
+    assert window._visible_on_some_screen()
+
+    area = qt_app.primaryScreen().availableGeometry()
+    assert area.contains(window.frameGeometry().center())
+
+
+def test_geometry_is_persisted_on_close(window):
+    window.settings.remove("geometry")
+    window.close()
+    assert window.settings.value("geometry") is not None
+
+
+def test_restore_ignores_geometry_that_is_no_longer_visible(window, qt_app):
+    window.move(-4000, -3000)
+    window.settings.setValue("geometry", window.saveGeometry())
+    window._restore_geometry()
+    assert window._visible_on_some_screen()
+
+
+def test_ensure_visible_runs_after_show_and_recovers_the_window(window, qt_app):
+    """The real bug: the check ran before show(), when geometry is a placeholder."""
+    window.show()
+    window.move(-4000, -3000)
+    assert not window._visible_on_some_screen()
+
+    window.ensure_visible()
+
+    assert window._visible_on_some_screen()
+    area = qt_app.primaryScreen().availableGeometry()
+    assert area.contains(window.frameGeometry().center())
+
+
+def test_ensure_visible_leaves_a_good_position_alone(window, qt_app):
+    window.show()
+    window.center_on_primary()
+    before = window.frameGeometry()
+    window.ensure_visible()
+    assert window.frameGeometry() == before
+
+
+def test_fresh_profile_centers_on_the_primary_screen(qt_app, tmp_path, monkeypatch):
+    monkeypatch.setattr(MainWindow, "_check_ffmpeg", lambda self: None)
+    fresh = MainWindow()
+    fresh.settings.remove("geometry")
+    try:
+        fresh._restore_geometry()
+        area = qt_app.primaryScreen().availableGeometry()
+        assert area.contains(fresh.frameGeometry().center())
+    finally:
+        fresh.close()
