@@ -347,3 +347,48 @@ def test_fresh_profile_centers_on_the_primary_screen(qt_app, tmp_path, monkeypat
         assert area.contains(fresh.frameGeometry().center())
     finally:
         fresh.close()
+
+
+def test_history_never_lives_in_the_protected_output_folder(window, tmp_path):
+    """~/Downloads is TCC-gated: the first access blocks the calling thread."""
+    window.output_dir = tmp_path
+    assert tmp_path not in window.history_file.parents
+    assert "Application Support" in str(window.history_file)
+
+
+def test_saving_history_does_not_touch_the_output_folder(window, tmp_path, monkeypatch):
+    touched: list[str] = []
+    original_mkdir = Path.mkdir
+
+    def spy(self, *args, **kwargs):
+        touched.append(str(self))
+        return original_mkdir(self, *args, **kwargs)
+
+    window.output_dir = tmp_path / "saida"
+    monkeypatch.setattr(Path, "mkdir", spy)
+    window._save_history("https://example.com/a", "concluído", "Mídia")
+
+    assert not [t for t in touched if "saida" in t]
+    assert "concluído" in window.history.toPlainText()
+
+
+def test_open_folder_does_not_mkdir_on_the_ui_thread(window, tmp_path, monkeypatch):
+    import threading
+
+    main = threading.current_thread()
+    on_main: list[str] = []
+    original = Path.mkdir
+
+    def spy(self, *args, **kwargs):
+        if threading.current_thread() is main:
+            on_main.append(str(self))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", spy)
+    window.output_dir = tmp_path / "inexistente"
+    window.open_folder()
+
+    assert not [c for c in on_main if "inexistente" in c], (
+        "mkdir em pasta protegida na thread da interface trava a janela"
+    )
+    assert "Preparando" in window.info.text()

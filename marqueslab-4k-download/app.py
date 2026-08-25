@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import platform
 import subprocess
+import threading
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -150,6 +151,19 @@ class DownloadWorker(QObject):
             self.engine.cancel()
 
 
+def append_history(path: Path, entry: dict) -> str:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    except Exception:  # noqa: BLE001 - a corrupt history must not lose a download
+        data = []
+    data.append(entry)
+    try:
+        path.write_text(json.dumps(data[-200:], ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:  # noqa: BLE001 - history is best effort
+        pass
+    return read_history(path)
+
+
 class HistoryLoader(QObject):
     """Reads the history file off the UI thread.
 
@@ -169,6 +183,19 @@ class HistoryLoader(QObject):
     @Slot()
     def run(self):
         self.loaded.emit(read_history(self.path))
+
+
+def history_path() -> Path:
+    """Application Support, never the download folder.
+
+    ~/Downloads, ~/Movies and ~/Desktop are TCC-protected: the first access
+    blocks in the open() syscall until the user answers the privacy prompt,
+    freezing whichever thread touches them. Application Support is not gated,
+    so bookkeeping never stalls the interface.
+    """
+    base = Path.home() / "Library" / "Application Support" / APP_NAME
+    base.mkdir(parents=True, exist_ok=True)
+    return base / "history.json"
 
 
 def read_history(path: Path) -> str:
@@ -536,11 +563,23 @@ class MainWindow(QMainWindow):
             self.output_dir = Path(folder)
             self.settings.setValue("output", str(self.output_dir))
             self.info.setText(f"Saída: {self.output_dir}")
-            self._load_history()
 
     def open_folder(self):
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.output_dir)))
+        target = self.output_dir
+        if not target.exists():
+            # mkdir on a TCC-protected folder blocks until the user answers the
+            # privacy prompt; never do it on the thread that draws the window.
+            threading.Thread(target=self._prepare_folder, args=(target,), daemon=True).start()
+            self.info.setText(f"Preparando {target}…")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+
+    def _prepare_folder(self, target: Path):
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except Exception:  # noqa: BLE001 - reported through the status line
+            pass
+        QTimer.singleShot(0, lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(target))))
 
     def analyze(self):
         if self._analyze_thread and self._analyze_thread.isRunning():
@@ -812,7 +851,7 @@ class MainWindow(QMainWindow):
     # --------------------------------------------------------------- history
     @property
     def history_file(self) -> Path:
-        return self.output_dir / ".marqueslab-history.json"
+        return history_path()
 
     def _load_history(self):
         """Load the history asynchronously — the first read may block on TCC."""
@@ -835,23 +874,13 @@ class MainWindow(QMainWindow):
         self._history_worker = None
 
     def _save_history(self, url: str, status: str, title: str = ""):
-        try:
-            data = []
-            if self.history_file.exists():
-                data = json.loads(self.history_file.read_text(encoding="utf-8"))
-            data.append({
-                "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "url": url,
-                "title": title,
-                "status": status,
-            })
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-            self.history_file.write_text(
-                json.dumps(data[-200:], ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            self.history.setPlainText(read_history(self.history_file))
-        except Exception:  # noqa: BLE001 - history is best effort
-            pass
+        entry = {
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "url": url,
+            "title": title,
+            "status": status,
+        }
+        self.history.setPlainText(append_history(self.history_file, entry))
 
     def closeEvent(self, event):
         self._shutting_down = True
