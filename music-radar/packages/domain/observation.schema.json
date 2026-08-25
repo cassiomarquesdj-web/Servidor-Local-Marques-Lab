@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://marqueslab.com/schemas/music-radar/observation.schema.json",
+  "title": "Music Radar Observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source", "metric", "artist", "track", "availability", "observed_at"],
+  "properties": {
+    "source": {"type": "string", "minLength": 1},
+    "metric": {"type": "string", "minLength": 1},
+    "artist": {"type": "string", "minLength": 1},
+    "track": {"type": "string", "minLength": 1},
+    "value": {"type": ["number", "null"]},
+    "unit": {"type": ["string", "null"]},
+    "region": {"type": ["string", "null"]},
+    "period_start": {"type": ["string", "null"], "format": "date-time"},
+    "period_end": {"type": ["string", "null"], "format": "date-time"},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "source_url": {"type": ["string", "null"], "format": "uri"},
+    "availability": {"type": "string", "enum": ["available", "unavailable", "restricted", "error"]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"availability": {"const": "available"}}},
+      "then": {"required": ["value"]}
+    }
+  ]
+}
