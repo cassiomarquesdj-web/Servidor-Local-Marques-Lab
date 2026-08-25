@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import subprocess
+import time
 import threading
 import sys
-from dataclasses import dataclass, field
+import traceback
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
+from functools import wraps
 from pathlib import Path
 
 from PySide6 import QtCore
@@ -25,7 +29,7 @@ from branding import APP_NAME, BUNDLE_ID, COPYRIGHT, ORGANIZATION, VERSION
 from engine import (
     DownloadCancelled, DownloadEngine, DownloadResult, FFmpegNotFound, MediaChoice,
     choose_audio, choose_video, extractor_version, ffmpeg_executable, format_bytes,
-    format_duration, friendly_error, split_urls,
+    format_duration, friendly_error, run_worker, split_urls,
 )
 
 ICON_PATH = Path(__file__).resolve().parent / "assets" / "AppIcon.icns"
@@ -123,6 +127,15 @@ class AnalyzeWorker(QObject):
 
 
 class DownloadWorker(QObject):
+    """Runs one download.
+
+    The work happens in a QThread rather than a child process: driving yt-dlp
+    from a separate process made the transfer stall on this platform, while the
+    in-process engine reaches full speed. Because a thread blocked in a socket
+    read cannot be interrupted, cancellation is best-effort — MainWindow gives
+    up on a worker that does not answer instead of waiting for it.
+    """
+
     progress = Signal(dict)
     finished = Signal(object)
     cancelled = Signal()
@@ -138,17 +151,99 @@ class DownloadWorker(QObject):
     @Slot()
     def run(self):
         try:
-            self.engine = DownloadEngine(self.output, self.progress.emit, browser_session=self.browser)
-            result = self.engine.download(self.job.url, self.job.choice, playlist=self.job.playlist)
+            self.engine = DownloadEngine(
+                self.output, self.progress.emit, browser_session=self.browser
+            )
+            result = self.engine.download(
+                self.job.url, self.job.choice, playlist=self.job.playlist
+            )
             self.finished.emit(result)
         except DownloadCancelled:
             self.cancelled.emit()
         except Exception as exc:  # noqa: BLE001 - surfaced to the user
+            record(f"falha no download de {self.job.url}\n{traceback.format_exc()}")
             self.failed.emit(friendly_error(str(exc)))
 
     def cancel(self):
         if self.engine:
             self.engine.cancel()
+
+
+def support_dir() -> Path:
+    base = Path.home() / "Library" / "Application Support" / APP_NAME
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def log_path() -> Path:
+    return support_dir() / "diagnostico.log"
+
+
+def record(message: str) -> None:
+    """Append a diagnostic line.
+
+    A --windowed bundle has no stdout: without this, an exception in a slot
+    leaves no trace anywhere and the application simply appears to freeze.
+    """
+    try:
+        with log_path().open("a", encoding="utf-8") as handle:
+            handle.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {message}\n")
+    except Exception:  # noqa: BLE001 - diagnostics must never raise
+        pass
+
+
+def install_diagnostics() -> None:
+    def hook(kind, value, tb):
+        record("EXCEÇÃO NÃO TRATADA\n" + "".join(traceback.format_exception(kind, value, tb)))
+        sys.__excepthook__(kind, value, tb)
+
+    def thread_hook(args):
+        record(
+            f"EXCEÇÃO EM THREAD {args.thread.name if args.thread else '?'}\n"
+            + "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
+        )
+
+    sys.excepthook = hook
+    threading.excepthook = thread_hook
+
+
+def guarded(method):
+    """Keep a Qt slot from tearing the window down on an unexpected error."""
+
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except Exception as exc:  # noqa: BLE001 - reported, never fatal
+            record(f"FALHA EM {method.__name__}\n{traceback.format_exc()}")
+            try:
+                self.info.setText(f"Erro em {method.__name__}: {exc}")
+                self.report_error(f"Erro em {method.__name__}", str(exc), traceback.format_exc())
+            except Exception:  # noqa: BLE001
+                pass
+            return None
+
+    return wrapper
+
+
+def history_path() -> Path:
+    """Application Support, never the download folder.
+
+    ~/Downloads, ~/Movies and ~/Desktop are TCC-protected: the first access
+    blocks in the open() syscall until the user answers the privacy prompt,
+    freezing whichever thread touches them. Application Support is not gated,
+    so bookkeeping never stalls the interface.
+    """
+    return support_dir() / "history.json"
+
+
+def read_history(path: Path) -> str:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - history is best effort
+        return ""
+    lines = [f"{x['date']} • {x['status']} • {x.get('title') or x['url']}" for x in data[-30:]]
+    return "\n".join(reversed(lines))
 
 
 def append_history(path: Path, entry: dict) -> str:
@@ -165,14 +260,7 @@ def append_history(path: Path, entry: dict) -> str:
 
 
 class HistoryLoader(QObject):
-    """Reads the history file off the UI thread.
-
-    The output folder lives under ~/Downloads, which macOS protects with TCC.
-    The very first read blocks in the open() syscall until the user answers the
-    privacy prompt — so doing it on the main thread before the window exists
-    freezes the application with no window at all, which is indistinguishable
-    from a failure to launch.
-    """
+    """Reads the history file off the UI thread."""
 
     loaded = Signal(str)
 
@@ -183,28 +271,6 @@ class HistoryLoader(QObject):
     @Slot()
     def run(self):
         self.loaded.emit(read_history(self.path))
-
-
-def history_path() -> Path:
-    """Application Support, never the download folder.
-
-    ~/Downloads, ~/Movies and ~/Desktop are TCC-protected: the first access
-    blocks in the open() syscall until the user answers the privacy prompt,
-    freezing whichever thread touches them. Application Support is not gated,
-    so bookkeeping never stalls the interface.
-    """
-    base = Path.home() / "Library" / "Application Support" / APP_NAME
-    base.mkdir(parents=True, exist_ok=True)
-    return base / "history.json"
-
-
-def read_history(path: Path) -> str:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001 - history is best effort
-        return ""
-    lines = [f"{x['date']} • {x['status']} • {x.get('title') or x['url']}" for x in data[-30:]]
-    return "\n".join(reversed(lines))
 
 
 class DropLineEdit(QLineEdit):
@@ -253,6 +319,11 @@ class MainWindow(QMainWindow):
         self._analyze_worker: AnalyzeWorker | None = None
         self._history_thread: QThread | None = None
         self._history_worker: HistoryLoader | None = None
+        self._orphans: list[tuple[QThread, object]] = []
+        self._last_event = time.monotonic()
+        self._watchdog = QTimer(self)
+        self._watchdog.setInterval(5000)
+        self._watchdog.timeout.connect(self._on_watchdog)
         self._shutting_down = False
         self.setWindowTitle(APP_NAME)
         self.resize(1180, 800)
@@ -463,6 +534,7 @@ class MainWindow(QMainWindow):
         self.editable.toggled.connect(lambda on: self.settings.setValue("editable", on))
         self.browser.currentIndexChanged.connect(self._on_browser_changed)
         self.queue.itemDoubleClicked.connect(self._reveal_item)
+        self.folder_ready.connect(self._on_folder_ready)
         self._sync_quality()
 
     def _build_menu(self):
@@ -491,6 +563,16 @@ class MainWindow(QMainWindow):
         about = QAction(f"Sobre o {APP_NAME}", self)
         about.triggered.connect(self.show_about)
         help_menu.addAction(about)
+
+    def report_error(self, title: str, message: str, detail: str = ""):
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(title)
+        head, _, tech = message.partition("Detalhe técnico:")
+        box.setText(head.strip() or message)
+        if tech or detail:
+            box.setDetailedText((tech or detail).strip())
+        box.exec()
 
     def show_about(self):
         ffmpeg = ffmpeg_executable() or "não encontrado"
@@ -531,6 +613,11 @@ class MainWindow(QMainWindow):
         self.quality.setEnabled(is_video)
         self.editable.setEnabled(is_video)
 
+    @Slot(str)
+    def _on_folder_ready(self, path: str):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        self.info.setText(f"Saída: {path}")
+
     def _choice(self) -> MediaChoice:
         if self.mode.currentIndex() == 1:
             return choose_audio()
@@ -557,6 +644,7 @@ class MainWindow(QMainWindow):
         return self._thread is not None and self._thread.isRunning()
 
     # ---------------------------------------------------------------- actions
+    @guarded
     def choose_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Escolha a pasta de saída", str(self.output_dir))
         if folder:
@@ -564,6 +652,7 @@ class MainWindow(QMainWindow):
             self.settings.setValue("output", str(self.output_dir))
             self.info.setText(f"Saída: {self.output_dir}")
 
+    @guarded
     def open_folder(self):
         target = self.output_dir
         if not target.exists():
@@ -574,13 +663,18 @@ class MainWindow(QMainWindow):
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
 
+    folder_ready = Signal(str)
+
     def _prepare_folder(self, target: Path):
         try:
             target.mkdir(parents=True, exist_ok=True)
-        except Exception:  # noqa: BLE001 - reported through the status line
-            pass
-        QTimer.singleShot(0, lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(target))))
+        except Exception as exc:  # noqa: BLE001 - reported through the signal
+            record(f"mkdir falhou em {target}: {exc}")
+        # Qt objects may only be touched from the thread that owns them; the
+        # signal hops back to the UI thread instead of calling into Qt here.
+        self.folder_ready.emit(str(target))
 
+    @guarded
     def analyze(self):
         if self._analyze_thread and self._analyze_thread.isRunning():
             return
@@ -635,6 +729,7 @@ class MainWindow(QMainWindow):
         self.queue.addTopLevelItem(item)
         self._refresh_row(len(self.jobs) - 1)
 
+    @guarded
     def add_to_queue(self):
         try:
             urls = self._urls()
@@ -649,12 +744,14 @@ class MainWindow(QMainWindow):
         self.url.clear()
         self.info.setText(f"{len(urls)} item(ns) adicionado(s) à fila.")
 
+    @guarded
     def download_now(self):
         before = len(self.jobs)
         self.add_to_queue()
         if len(self.jobs) > before:
             self.start_queue()
 
+    @guarded
     def start_queue(self):
         if self._running():
             return
@@ -682,11 +779,39 @@ class MainWindow(QMainWindow):
         self._worker.cancelled.connect(self.on_cancelled)
         self._worker.failed.connect(self.on_failed)
         self._thread.start()
+        self._last_event = time.monotonic()
+        self._watchdog.start()
+
+    def _on_watchdog(self):
+        """Say what is happening when the source goes quiet.
+
+        The engine can only notice a stall from inside a yt-dlp progress hook,
+        and a transfer that never delivers a first byte never fires one. This
+        timer lives in the interface, so silence is always reported instead of
+        looking like a frozen application.
+        """
+        if not self._running():
+            self._watchdog.stop()
+            return
+        quiet = int(time.monotonic() - self._last_event)
+        if quiet < 20 or self.active_index < 0:
+            return
+        job = self.jobs[self.active_index]
+        self.info.setText(
+            f"Sem resposta da fonte há {quiet}s — {job.display_title}. "
+            "O download continua tentando; use CANCELAR ATUAL para desistir."
+        )
 
     def _cleanup_thread(self):
+        self._watchdog.stop()
         if self._thread:
             self._thread.quit()
-            self._thread.wait(5000)
+            if not self._thread.wait(1500):
+                # Still busy: park it instead of freezing the window.
+                self._orphans.append((self._thread, self._worker))
+                self._thread = None
+                self._worker = None
+                return
         self._worker = None
         self._thread = None
 
@@ -694,6 +819,7 @@ class MainWindow(QMainWindow):
     def on_progress(self, data: dict):
         if self.active_index < 0:
             return
+        self._last_event = time.monotonic()
         job = self.jobs[self.active_index]
         info = data.get("info_dict") or {}
         if not job.title and info.get("title"):
@@ -728,6 +854,9 @@ class MainWindow(QMainWindow):
     def _next_or_finish(self):
         self._cleanup_thread()
         self.active_index = -1
+        self._start_next()
+
+    def _start_next(self):
         if self._shutting_down:
             return
         index = next((i for i, job in enumerate(self.jobs) if job.is_pending), None)
@@ -780,25 +909,63 @@ class MainWindow(QMainWindow):
             self._refresh_row(index)
             self._save_history(job.url, "falhou: " + message[:160], job.display_title)
         if not self._shutting_down:
-            box = QMessageBox(self)
-            box.setIcon(QMessageBox.Warning)
-            box.setWindowTitle("Download")
-            head, _, detail = message.partition("Detalhe técnico:")
-            box.setText(head.strip() or message)
-            if detail:
-                box.setDetailedText(detail.strip())
-            box.exec()
+            self.report_error("Download", message)
         self._next_or_finish()
 
+    @guarded
     def cancel_current(self):
-        if self._worker:
-            self.info.setText("Cancelando…")
-            self._worker.cancel()
+        if not self._worker:
+            return
+        self.info.setText("Cancelando…")
+        self._worker.cancel()
+        # Killing the child process makes the read return, so the worker always
+        # finishes; this only covers a child that ignores SIGTERM and SIGKILL.
+        QTimer.singleShot(8000, self._force_cancel)
+
+    def _force_cancel(self):
+        if not self._thread or not self._thread.isRunning():
+            return
+        record("cancelamento não respondido: liberando o worker")
+        index = self.active_index
+        if index >= 0:
+            job = self.jobs[index]
+            job.status = JobStatus.CANCELLED
+            job.speed = "—"
+            job.message = "Cancelado — a fonte não respondeu ao pedido de interrupção."
+            self._refresh_row(index)
+            self._save_history(job.url, "cancelado", job.display_title)
+        self._detach_worker()
+        self.active_index = -1
+        self.progress.setValue(0)
+        self.info.setText("Download interrompido.")
+        self._start_next()
+
+    def _detach_worker(self):
+        """Drop a worker that will not stop, without blocking the UI thread.
+
+        A QThread cannot be killed safely; the reference is parked so Python
+        does not collect a running thread, and it exits on its own when yt-dlp
+        finally gives up on the socket.
+        """
+        for name in ("progress", "finished", "cancelled", "failed"):
+            signal = getattr(self._worker, name, None)
+            if signal is None:
+                continue
+            try:
+                signal.disconnect()
+            except (RuntimeError, TypeError):
+                pass  # already disconnected, or nothing was connected
+        if self._thread:
+            self._thread.quit()
+            self._orphans.append((self._thread, self._worker))
+        self._thread = None
+        self._worker = None
 
     def _selected_indexes(self) -> list[int]:
         selected = set(self.queue.selectedItems())
         return [i for i, item in enumerate(self.items) if item in selected]
 
+    @guarded
     def retry_selected(self):
         indexes = [i for i in self._selected_indexes() if self.jobs[i].status in {JobStatus.FAILED, JobStatus.CANCELLED}]
         if not indexes:
@@ -826,6 +993,7 @@ class MainWindow(QMainWindow):
             removed += 1
         return removed
 
+    @guarded
     def remove_selected(self):
         removed = self._drop_rows(self._selected_indexes())
         self.info.setText(
@@ -833,6 +1001,7 @@ class MainWindow(QMainWindow):
             else "Nada removido. O item em download não pode ser removido — cancele antes."
         )
 
+    @guarded
     def clear_completed(self):
         removed = self._drop_rows([i for i, job in enumerate(self.jobs) if job.is_finished])
         self.info.setText(f"{removed} item(ns) concluído(s) removido(s) da tela. Histórico preservado.")
@@ -1021,7 +1190,11 @@ def self_test(deep: bool = False) -> int:
 
 
 def main() -> int:
+    install_diagnostics()
     flags = sys.argv[1:]
+    if "--download-worker" in flags:
+        spec = json.loads(flags[flags.index("--download-worker") + 1])
+        return run_worker(spec)
     if "--self-test" in flags or "--self-test-download" in flags:
         try:
             return self_test(deep="--self-test-download" in flags)

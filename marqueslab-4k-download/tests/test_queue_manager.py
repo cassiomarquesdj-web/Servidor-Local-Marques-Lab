@@ -392,3 +392,91 @@ def test_open_folder_does_not_mkdir_on_the_ui_thread(window, tmp_path, monkeypat
         "mkdir em pasta protegida na thread da interface trava a janela"
     )
     assert "Preparando" in window.info.text()
+
+
+def test_cancel_does_not_block_when_the_worker_never_answers(window, monkeypatch, qt_app):
+    """A stalled transfer fires no progress hook, so cancel may never be seen."""
+    class DeafThread:
+        def isRunning(self): return True
+        def quit(self): pass
+        def wait(self, _ms=0): return False
+
+    class DeafWorker:
+        cancelled_called = False
+        def cancel(self): DeafWorker.cancelled_called = True
+
+    window.url.setText("https://example.com/a")
+    window.add_to_queue()
+    window.active_index = 0
+    window.jobs[0].status = JobStatus.RUNNING
+    window._thread = DeafThread()
+    window._worker = DeafWorker()
+    monkeypatch.setattr(MainWindow, "_start_next", lambda self: None)
+
+    window.cancel_current()
+    assert DeafWorker.cancelled_called
+    assert window.info.text() == "Cancelando…"
+
+    window._force_cancel()
+
+    assert window.jobs[0].status is JobStatus.CANCELLED
+    assert window._thread is None and window._worker is None
+    assert window._orphans, "o worker preso precisa ser estacionado, não aguardado"
+    assert "interrompido" in window.info.text()
+
+
+def test_cleanup_never_waits_forever_on_a_stuck_worker(window):
+    class DeafThread:
+        def isRunning(self): return True
+        def quit(self): pass
+        def wait(self, _ms=0): return False
+
+    window._thread = DeafThread()
+    window._worker = object()
+    window._cleanup_thread()
+    assert window._thread is None
+    assert window._orphans
+
+
+def test_watchdog_reports_a_silent_source(window, monkeypatch):
+    """A transfer that never delivers a first byte fires no engine hook."""
+    import time as _t
+
+    window.url.setText("https://example.com/a")
+    window.add_to_queue()
+    window.active_index = 0
+    window.jobs[0].status = JobStatus.RUNNING
+    monkeypatch.setattr(MainWindow, "_running", lambda self: True)
+    window._last_event = _t.monotonic() - 45
+
+    window._on_watchdog()
+
+    assert "Sem resposta da fonte" in window.info.text()
+    assert "45s" in window.info.text() or "44s" in window.info.text()
+    assert "CANCELAR" in window.info.text()
+
+
+def test_watchdog_is_quiet_while_data_flows(window, monkeypatch):
+    import time as _t
+
+    window.url.setText("https://example.com/a")
+    window.add_to_queue()
+    window.active_index = 0
+    monkeypatch.setattr(MainWindow, "_running", lambda self: True)
+    window.info.setText("Baixando…")
+    window._last_event = _t.monotonic()
+
+    window._on_watchdog()
+
+    assert window.info.text() == "Baixando…"
+
+
+def test_progress_resets_the_interface_watchdog(window):
+    import time as _t
+
+    window.url.setText("https://example.com/a")
+    window.add_to_queue()
+    window.active_index = 0
+    window._last_event = _t.monotonic() - 60
+    window.on_progress({"status": "downloading", "downloaded_bytes": 10, "total_bytes": 100})
+    assert _t.monotonic() - window._last_event < 1

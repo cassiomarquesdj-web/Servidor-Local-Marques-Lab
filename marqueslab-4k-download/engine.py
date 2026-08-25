@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable
@@ -230,6 +231,7 @@ class DownloadEngine:
         *,
         skip_duplicates: bool = False,
         browser_session: str | None = None,
+        stall_timeout: float = 120.0,
     ):
         """`browser_session` reuses the user's own logged-in session.
 
@@ -246,6 +248,10 @@ class DownloadEngine:
         self.progress = progress or (lambda _: None)
         self.skip_duplicates = skip_duplicates
         self.browser_session = browser_session or None
+        self.stall_timeout = stall_timeout
+        self._last_progress = time.monotonic()
+        self._last_bytes = 0
+        self._last_report = 0.0
         self._cancel_event = threading.Event()
         self._produced: list[Path] = []
         self._titles: list[str] = []
@@ -265,8 +271,13 @@ class DownloadEngine:
             "file_access_retries": 5,
             "fragment_retries": 10,
             "extractor_retries": 3,
-            "socket_timeout": 30,
+            "socket_timeout": 20,
             "concurrent_fragment_downloads": 8,
+            # Without chunking, a single progressive stream is one long read:
+            # yt-dlp calls no hook for minutes, so a cancel request cannot be
+            # observed and a stalled connection is indistinguishable from a slow
+            # one. Chunks give the engine a heartbeat.
+            "http_chunk_size": 10 * 1024 * 1024,
             "ignoreerrors": False,
             "progress_hooks": [self._hook],
             "postprocessor_hooks": [self._pp_hook],
@@ -290,10 +301,31 @@ class DownloadEngine:
         if self._cancel_event.is_set():
             raise DownloadCancelled("Download cancelado pelo usuário")
 
+    def _check_stalled(self, data: dict) -> None:
+        downloaded = data.get("downloaded_bytes") or 0
+        now = time.monotonic()
+        if downloaded != self._last_bytes:
+            self._last_bytes = downloaded
+            self._last_progress = now
+        elif self.stall_timeout and now - self._last_progress > self.stall_timeout:
+            raise RuntimeError(
+                f"A transferência ficou {int(now - self._last_progress)}s sem receber "
+                "dados e foi interrompida. A fonte parou de responder — tente novamente."
+            )
+
     def _hook(self, data: dict) -> None:
         self._check_cancelled()
-        if data.get("status") == "finished":
+        status = data.get("status")
+        if status == "downloading":
+            self._check_stalled(data)
+        if status == "finished":
             self._remember(data.get("info_dict") or {}, data.get("filename"))
+        # yt-dlp fires this hook per chunk; forwarding every one floods the UI
+        # thread's event queue and makes the window stop repainting.
+        now = time.monotonic()
+        if status == "downloading" and now - self._last_report < 0.1:
+            return
+        self._last_report = now
         self.progress(data)
 
     def _pp_hook(self, data: dict) -> None:
@@ -353,6 +385,9 @@ class DownloadEngine:
         self._cancel_event.clear()
         self._produced = []
         self._titles = []
+        self._last_progress = time.monotonic()
+        self._last_bytes = 0
+        self._last_report = 0.0
         opts = self.build_options(choice, playlist=playlist)
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -596,6 +631,78 @@ def friendly_error(message: str) -> str:
 def extractor_version() -> str:
     """Version of the bundled yt-dlp, shown in the About dialog and self-test."""
     return yt_dlp.version.__version__
+
+
+# --------------------------------------------------------------- subprocess
+# A download runs in a child process, not a thread. A Python thread blocked in
+# a socket read cannot be interrupted: a cancelled job would keep downloading in
+# the background, competing for bandwidth with the next one, and the interface
+# would wait forever for a worker that never answers. A child process is killed
+# instantly and releases its sockets with it.
+
+def run_worker(spec: dict, out=None) -> int:
+    """Entry point of the child process: emit JSON lines, one per event."""
+    import json as _json
+
+    stream = out or sys.stdout
+
+    def emit(payload: dict) -> None:
+        try:
+            stream.write(_json.dumps(payload, default=str) + "\n")
+            stream.flush()
+        except Exception:  # noqa: BLE001 - the parent may have gone away
+            pass
+
+    def progress(data: dict) -> None:
+        info = data.get("info_dict") or {}
+        emit({
+            "event": "progress",
+            "status": data.get("status"),
+            "downloaded_bytes": data.get("downloaded_bytes"),
+            "total_bytes": data.get("total_bytes") or data.get("total_bytes_estimate"),
+            "speed": data.get("speed"),
+            "eta": data.get("eta"),
+            "percent": data.get("percent"),
+            "conversion": data.get("conversion"),
+            "title": info.get("title"),
+        })
+
+    try:
+        choice = MediaChoice(**spec["choice"])
+        engine = DownloadEngine(
+            Path(spec["output"]),
+            progress,
+            browser_session=spec.get("browser_session"),
+            stall_timeout=spec.get("stall_timeout", 120.0),
+        )
+        result = engine.download(spec["url"], choice, playlist=spec.get("playlist", False))
+        emit({
+            "event": "done",
+            "files": [str(f) for f in result.files],
+            "titles": result.titles,
+            "warnings": result.warnings,
+        })
+        return 0
+    except DownloadCancelled:
+        emit({"event": "cancelled"})
+        return 0
+    except Exception as exc:  # noqa: BLE001 - reported to the parent
+        emit({"event": "failed", "message": friendly_error(str(exc))})
+        return 1
+
+
+def worker_command(spec: dict) -> list[str]:
+    """Build the command that runs `spec` in a child process.
+
+    Frozen builds re-execute the application binary with a flag; from source the
+    interpreter runs the module directly.
+    """
+    import json as _json
+
+    payload = _json.dumps(spec, default=str)
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--download-worker", payload]
+    return [sys.executable, str(Path(__file__).resolve().parent / "app.py"), "--download-worker", payload]
 
 
 def format_bytes(value: float | None) -> str:

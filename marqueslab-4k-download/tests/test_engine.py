@@ -185,3 +185,43 @@ def test_extractor_version_is_reported():
 
     version = extractor_version()
     assert version and version[0].isdigit()
+
+
+def test_progress_is_throttled(tmp_path):
+    """Forwarding every chunk hook floods the UI thread and freezes the window."""
+    seen: list[dict] = []
+    engine = DownloadEngine(tmp_path, seen.append)
+    for i in range(50):
+        engine._hook({"status": "downloading", "downloaded_bytes": i + 1})
+    assert len(seen) < 10, f"{len(seen)} eventos repassados — sem limitação de taxa"
+
+
+def test_finished_events_are_never_throttled(tmp_path):
+    seen: list[dict] = []
+    engine = DownloadEngine(tmp_path, seen.append)
+    engine._hook({"status": "downloading", "downloaded_bytes": 1})
+    engine._hook({"status": "finished", "downloaded_bytes": 2, "filename": str(tmp_path / "a.mp4")})
+    assert any(e["status"] == "finished" for e in seen)
+
+
+def test_stalled_transfer_is_aborted(tmp_path):
+    engine = DownloadEngine(tmp_path, stall_timeout=0.05)
+    engine._hook({"status": "downloading", "downloaded_bytes": 100})
+    import time as _t
+    _t.sleep(0.1)
+    with pytest.raises(RuntimeError, match="sem receber"):
+        engine._hook({"status": "downloading", "downloaded_bytes": 100})
+
+
+def test_progress_resets_the_stall_timer(tmp_path):
+    engine = DownloadEngine(tmp_path, stall_timeout=0.05)
+    import time as _t
+    for i in range(4):
+        engine._hook({"status": "downloading", "downloaded_bytes": i * 1000})
+        _t.sleep(0.03)
+
+
+def test_downloads_are_chunked(tmp_path):
+    """Without chunking a long read starves the cancel and stall checks."""
+    opts = DownloadEngine(tmp_path).build_options(choose_video())
+    assert opts["http_chunk_size"] > 0
