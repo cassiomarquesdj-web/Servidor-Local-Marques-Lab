@@ -156,7 +156,7 @@ def _is_executable_file(path: Path) -> bool:
         return False
     if is_windows():
         # Windows has no execute bit: the extension is what makes it runnable.
-        return path.suffix.lower() in {".exe", ".bat", ".cmd", ""}
+        return path.suffix.lower() in {".exe", ".bat", ".cmd"}
     return os.access(path, os.X_OK)
 
 

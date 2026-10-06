@@ -5,6 +5,7 @@ unsigned, un-notarized or mislabelled artifact.
 """
 from __future__ import annotations
 
+import os
 import plistlib
 import re
 import stat
@@ -69,10 +70,13 @@ def test_entitlements_enable_hardened_runtime_requirements():
 
 @pytest.mark.parametrize("script", SCRIPTS)
 def test_packaging_scripts_are_executable(script):
+    """O pipeline de release do macOS. O bit de execução não existe no Windows
+    e o git não o preserva nesse checkout, então a checagem é só no POSIX."""
     path = PACKAGING / script
     assert path.is_file(), f"{script} ausente"
-    assert path.stat().st_mode & stat.S_IXUSR, f"{script} precisa ser executável"
     assert path.read_text(encoding="utf-8").startswith("#!/bin/bash")
+    if os.name != "nt":
+        assert path.stat().st_mode & stat.S_IXUSR, f"{script} precisa ser executável"
 
 
 def test_signing_refuses_anything_other_than_developer_id():
