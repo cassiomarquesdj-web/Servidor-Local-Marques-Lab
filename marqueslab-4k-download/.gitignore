@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+release/
+*.dmg
+*.spec.bak
+.DS_Store
+.pytest_cache/
+DIAGNOSTICO-CI.md
