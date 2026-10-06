@@ -579,12 +579,44 @@ def available_encoders(ffmpeg: str) -> str:
         return ""
 
 
+SOFTWARE_H264 = ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-profile:v", "high"]
+
+_ENCODER_CACHE: dict[str, bool] = {}
+
+
+def encoder_works(ffmpeg: str, name: str, args: list[str]) -> bool:
+    """Actually encode one frame with it.
+
+    Listing an encoder only proves FFmpeg was compiled with it. A build may
+    advertise h264_nvenc on a machine with no NVIDIA driver, and the failure
+    then happens in the middle of the user's conversion: "Cannot load
+    nvcuda.dll". One throwaway frame settles it in a fraction of a second.
+    """
+    key = f"{ffmpeg}|{name}"
+    if key in _ENCODER_CACHE:
+        return _ENCODER_CACHE[key]
+    try:
+        probe = subprocess.run(
+            [
+                ffmpeg, "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "color=black:s=64x64:d=0.1",
+                "-c:v", name, *args, "-frames:v", "1", "-f", "null", "-",
+            ],
+            capture_output=True, text=True, timeout=60,
+        )
+        ok = probe.returncode == 0
+    except Exception:  # noqa: BLE001 - treat any failure as unavailable
+        ok = False
+    _ENCODER_CACHE[key] = ok
+    return ok
+
+
 def _h264_encoder(ffmpeg: str) -> list[str]:
     encoders = available_encoders(ffmpeg)
     for name, args in HARDWARE_H264.get(sys.platform, []):
-        if name in encoders:
+        if name in encoders and encoder_works(ffmpeg, name, args):
             return ["-c:v", name, *args]
-    return ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-profile:v", "high"]
+    return list(SOFTWARE_H264)
 
 
 def ensure_editable(
@@ -644,11 +676,25 @@ def ensure_editable(
             process.kill()
 
     if process.returncode != 0:
+        details = process.stderr.read().strip() if process.stderr else "erro desconhecido"
         target.unlink(missing_ok=True)
-        raise RuntimeError(
-            "Falha ao converter a mídia para H.264/AAC: "
-            + (process.stderr.read().strip() if process.stderr else "erro desconhecido")
-        )
+        hardware = not video_ok and command[command.index("-c:v") + 1] != "libx264"
+        if hardware:
+            # The GPU encoder failed on the real stream: redo it in software
+            # rather than handing the user a failed job.
+            software = list(command)
+            start = software.index("-c:v")
+            end = software.index("-pix_fmt")
+            software[start:end] = SOFTWARE_H264
+            retry = subprocess.run(software, capture_output=True, text=True)
+            if retry.returncode == 0:
+                path.unlink(missing_ok=True)
+                target.replace(final)
+                report({"status": "converted", "info_dict": {"filepath": str(final)}, "percent": 100})
+                return final
+            target.unlink(missing_ok=True)
+            details = retry.stderr.strip() or details
+        raise RuntimeError("Falha ao converter a mídia para H.264/AAC: " + details)
 
     path.unlink(missing_ok=True)
     target.replace(final)

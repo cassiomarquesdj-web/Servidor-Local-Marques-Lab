@@ -90,6 +90,7 @@ def test_bundle_lookup_covers_the_windows_layout(monkeypatch, tmp_path):
 def test_windows_prefers_a_hardware_encoder(monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(engine, "available_encoders", lambda _f: " h264_nvenc  h264_qsv ")
+    monkeypatch.setattr(engine, "encoder_works", lambda *_a: True)
     assert engine._h264_encoder("ffmpeg")[:2] == ["-c:v", "h264_nvenc"]
 
 
@@ -142,3 +143,27 @@ def test_installer_creates_shortcuts():
     assert "[Icons]" in text
     assert "autodesktop" in text
     assert "uninstallexe" in text, "precisa existir desinstalador"
+
+
+def test_listed_encoder_is_not_assumed_to_work(monkeypatch):
+    """A build can advertise h264_nvenc on a machine with no NVIDIA driver."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(engine, "available_encoders", lambda _f: "h264_nvenc h264_qsv libx264")
+    monkeypatch.setattr(engine, "encoder_works", lambda *_a: False)
+    assert engine._h264_encoder("ffmpeg") == engine.SOFTWARE_H264
+
+
+def test_first_working_hardware_encoder_wins(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(engine, "available_encoders", lambda _f: "h264_nvenc h264_qsv")
+    monkeypatch.setattr(engine, "encoder_works", lambda _f, name, _a: name == "h264_qsv")
+    assert engine._h264_encoder("ffmpeg")[:2] == ["-c:v", "h264_qsv"]
+
+
+def test_encoder_probe_detects_a_real_encoder(ffmpeg_bin):
+    assert engine.encoder_works(ffmpeg_bin, "libx264", ["-preset", "ultrafast"])
+
+
+def test_encoder_probe_rejects_a_missing_encoder(ffmpeg_bin):
+    engine._ENCODER_CACHE.clear()
+    assert not engine.encoder_works(ffmpeg_bin, "h264_naoexiste", [])
