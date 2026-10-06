@@ -350,10 +350,21 @@ def test_fresh_profile_centers_on_the_primary_screen(qt_app, tmp_path, monkeypat
 
 
 def test_history_never_lives_in_the_protected_output_folder(window, tmp_path):
-    """~/Downloads is TCC-gated: the first access blocks the calling thread."""
+    """~/Downloads is TCC-gated: the first access blocks the calling thread.
+
+    The folder differs per platform (Application Support, %APPDATA%,
+    XDG_DATA_HOME); the invariant is that it is never the download folder.
+    """
+    import sys as _sys
+
     window.output_dir = tmp_path
     assert tmp_path not in window.history_file.parents
-    assert "Application Support" in str(window.history_file)
+    expected = {
+        "darwin": "Application Support",
+        "win32": "AppData",
+    }.get(_sys.platform, ".local")
+    assert expected in str(window.history_file)
+    assert app_module.APP_NAME in str(window.history_file)
 
 
 def test_saving_history_does_not_touch_the_output_folder(window, tmp_path, monkeypatch):

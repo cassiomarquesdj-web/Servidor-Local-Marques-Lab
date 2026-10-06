@@ -1,6 +1,7 @@
 """FFmpeg discovery, including the layouts produced by a frozen macOS bundle."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -9,6 +10,10 @@ import pytest
 
 import engine
 from engine import FFmpegNotFound, ffmpeg_executable, ffprobe_executable, require_ffmpeg
+
+
+# Windows decides by extension, POSIX by the execute bit.
+FFMPEG_NAME = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
 
 
 def _fake_binary(path: Path) -> Path:
@@ -37,14 +42,14 @@ def test_require_ffmpeg_raises_when_absent(monkeypatch):
 
 def test_bundled_ffmpeg_wins_over_path(monkeypatch, tmp_path):
     """PyInstaller's --add-binary src:ffmpeg creates a *directory* named ffmpeg."""
-    bundled = _fake_binary(tmp_path / "ffmpeg" / "ffmpeg")
+    bundled = _fake_binary(tmp_path / "ffmpeg" / FFMPEG_NAME)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
     assert ffmpeg_executable() == str(bundled)
 
 
 def test_bundled_ffmpeg_at_bundle_root(monkeypatch, tmp_path):
-    bundled = _fake_binary(tmp_path / "ffmpeg")
+    bundled = _fake_binary(tmp_path / FFMPEG_NAME)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
     assert ffmpeg_executable() == str(bundled)
@@ -72,8 +77,8 @@ def test_non_executable_file_is_ignored(monkeypatch, tmp_path):
 def test_app_bundle_frameworks_layout(monkeypatch, tmp_path):
     """dist/App.app/Contents/Frameworks/ffmpeg must be discoverable."""
     contents = tmp_path / "App.app" / "Contents"
-    executable = _fake_binary(contents / "MacOS" / "App")
-    bundled = _fake_binary(contents / "Frameworks" / "ffmpeg")
+    executable = _fake_binary(contents / "MacOS" / ("App.exe" if os.name == "nt" else "App"))
+    bundled = _fake_binary(contents / "Frameworks" / FFMPEG_NAME)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.delattr(sys, "_MEIPASS", raising=False)
     monkeypatch.setattr(sys, "executable", str(executable))
@@ -81,10 +86,10 @@ def test_app_bundle_frameworks_layout(monkeypatch, tmp_path):
 
 
 def test_source_run_does_not_read_bundle_paths(monkeypatch, tmp_path):
-    _fake_binary(tmp_path / "ffmpeg")
+    _fake_binary(tmp_path / FFMPEG_NAME)
     monkeypatch.setattr(sys, "frozen", False, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
-    assert ffmpeg_executable() != str(tmp_path / "ffmpeg")
+    assert ffmpeg_executable() != str(tmp_path / FFMPEG_NAME)
 
 
 def test_ffprobe_lookup_is_optional():
