@@ -53,8 +53,11 @@ def test_spec_declares_bundle_metadata():
 
 
 def test_spec_bundles_ffmpeg_under_a_predictable_name():
+    """The wheel ships ffmpeg-macos-aarch64-v7.1 / ffmpeg-win-...exe; the app
+    resolves plain `ffmpeg` (or `ffmpeg.exe`), so the spec must rename it."""
     spec = (ROOT / "MarquesLab4KDownload.spec").read_text(encoding="utf-8")
-    assert 'stage(resolve_ffmpeg(), "ffmpeg")' in spec
+    assert 'stage(resolve_ffmpeg(), "ffmpeg" + EXE_SUFFIX)' in spec
+    assert 'EXE_SUFFIX = ".exe" if WINDOWS else ""' in spec
     assert 'binaries = [(FFMPEG, ".")]' in spec
 
 

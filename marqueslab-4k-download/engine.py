@@ -141,8 +141,23 @@ def choose_audio(bitrate: str = "320") -> MediaChoice:
     return MediaChoice("audio", f"{bitrate} kbps", "bestaudio/best", "mp3")
 
 
+def is_windows() -> bool:
+    """Single place the platform is decided.
+
+    Tests patch this instead of ``os.name``: changing ``os.name`` globally makes
+    every later ``Path()`` try to build a ``WindowsPath`` and takes the test
+    runner down with it.
+    """
+    return os.name == "nt"
+
+
 def _is_executable_file(path: Path) -> bool:
-    return path.is_file() and os.access(path, os.X_OK)
+    if not path.is_file():
+        return False
+    if is_windows():
+        # Windows has no execute bit: the extension is what makes it runnable.
+        return path.suffix.lower() in {".exe", ".bat", ".cmd", ""}
+    return os.access(path, os.X_OK)
 
 
 def _bundle_search_roots() -> list[Path]:
@@ -161,7 +176,9 @@ def _bundle_search_roots() -> list[Path]:
         root = Path(meipass)
         roots += [root, root / "ffmpeg", root / "bin"]
     exe_dir = Path(sys.executable).resolve().parent
-    roots += [exe_dir, exe_dir / "ffmpeg"]
+    roots += [exe_dir, exe_dir / "ffmpeg", exe_dir / "bin"]
+    # PyInstaller 6 one-folder builds on Windows keep the payload in _internal.
+    roots += [exe_dir / "_internal", exe_dir / "_internal" / "ffmpeg"]
     # dist/App.app/Contents/MacOS/App -> Contents
     contents = exe_dir.parent
     if contents.name == "Contents":
@@ -264,7 +281,7 @@ class DownloadEngine:
             "no_warnings": True,
             "noprogress": True,
             "restrictfilenames": False,
-            "windowsfilenames": os.name == "nt",
+            "windowsfilenames": is_windows(),
             "continuedl": True,
             "overwrites": False,
             "retries": 10,
@@ -540,13 +557,33 @@ def probe_media(path: Path) -> tuple[str | None, str | None, float | None]:
     return video, audio, duration
 
 
+# Hardware encoders, best first per platform. Falling back to libx264 always
+# works but is roughly 2.5x slower, which matters on a long 4K conversion.
+HARDWARE_H264: dict[str, list[tuple[str, list[str]]]] = {
+    "darwin": [("h264_videotoolbox", ["-profile:v", "high", "-q:v", "65"])],
+    "win32": [
+        ("h264_nvenc", ["-profile:v", "high", "-preset", "p4", "-cq", "20"]),
+        ("h264_qsv", ["-profile:v", "high", "-global_quality", "20"]),
+        ("h264_amf", ["-profile:v", "high", "-quality", "balanced"]),
+    ],
+}
+
+
+def available_encoders(ffmpeg: str) -> str:
+    try:
+        return subprocess.run(
+            [ffmpeg, "-hide_banner", "-encoders"],
+            capture_output=True, text=True, timeout=30,
+        ).stdout
+    except Exception:  # noqa: BLE001 - fall back to software encoding
+        return ""
+
+
 def _h264_encoder(ffmpeg: str) -> list[str]:
-    """Prefer Apple's hardware encoder: ~2.5x faster than libx264 on Apple Silicon."""
-    encoders = subprocess.run(
-        [ffmpeg, "-hide_banner", "-encoders"], capture_output=True, text=True
-    ).stdout
-    if "h264_videotoolbox" in encoders:
-        return ["-c:v", "h264_videotoolbox", "-profile:v", "high", "-q:v", "65"]
+    encoders = available_encoders(ffmpeg)
+    for name, args in HARDWARE_H264.get(sys.platform, []):
+        if name in encoders:
+            return ["-c:v", name, *args]
     return ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-profile:v", "high"]
 
 

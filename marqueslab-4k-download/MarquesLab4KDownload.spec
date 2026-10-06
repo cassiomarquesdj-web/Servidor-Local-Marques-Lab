@@ -11,11 +11,16 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(SPECPATH))
 
-from branding import APP_NAME, BUNDLE_ID, COPYRIGHT, MINIMUM_MACOS, VERSION  # noqa: E402
+from branding import (  # noqa: E402
+    APP_NAME, BUNDLE_ID, COPYRIGHT, MINIMUM_MACOS, ORGANIZATION, VERSION,
+)
 
 ROOT = Path(SPECPATH)
 TARGET_ARCH = os.environ.get("MARQUESLAB_TARGET_ARCH") or None
-ICON = ROOT / "assets" / "AppIcon.icns"
+WINDOWS = sys.platform == "win32"
+MACOS = sys.platform == "darwin"
+ICON = ROOT / "assets" / ("AppIcon.ico" if WINDOWS else "AppIcon.icns")
+EXE_SUFFIX = ".exe" if WINDOWS else ""
 
 
 def resolve_ffmpeg() -> str:
@@ -46,18 +51,47 @@ def stage(source: str, name: str) -> str:
     return str(target)
 
 
-FFMPEG = stage(resolve_ffmpeg(), "ffmpeg")
+FFMPEG = stage(resolve_ffmpeg(), "ffmpeg" + EXE_SUFFIX)
 print(f"[spec] bundling FFmpeg as {FFMPEG}")
 
 binaries = [(FFMPEG, ".")]
 ffprobe = os.environ.get("MARQUESLAB_FFPROBE")
 if ffprobe and Path(ffprobe).is_file():
-    binaries.append((stage(ffprobe, "ffprobe"), "."))
+    binaries.append((stage(ffprobe, "ffprobe" + EXE_SUFFIX), "."))
     print(f"[spec] bundling ffprobe from {ffprobe}")
 
 datas = []
 if ICON.exists():
     datas.append((str(ICON), "assets"))
+
+def windows_version_file() -> str | None:
+    """Metadata Explorer shows on the .exe properties panel."""
+    if not WINDOWS:
+        return None
+    numbers = tuple(int(part) for part in VERSION.split(".")) + (0,)
+    target = ROOT / "build" / "version_info.txt"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(f"""VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers={numbers[:4]}, prodvers={numbers[:4]},
+    mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([StringTable('040904B0', [
+      StringStruct('CompanyName', '{ORGANIZATION}'),
+      StringStruct('FileDescription', '{APP_NAME}'),
+      StringStruct('FileVersion', '{VERSION}'),
+      StringStruct('InternalName', '{APP_NAME}'),
+      StringStruct('LegalCopyright', '{COPYRIGHT}'),
+      StringStruct('OriginalFilename', '{APP_NAME}.exe'),
+      StringStruct('ProductName', '{APP_NAME}'),
+      StringStruct('ProductVersion', '{VERSION}')])]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)
+""", encoding="utf-8")
+    return str(target)
+
 
 a = Analysis(
     ["app.py"],
@@ -111,6 +145,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(ICON) if ICON.exists() else None,
+    version=windows_version_file(),
 )
 
 coll = COLLECT(
@@ -123,7 +158,7 @@ coll = COLLECT(
     name=APP_NAME,
 )
 
-app = BUNDLE(
+app = None if not MACOS else BUNDLE(
     coll,
     name=f"{APP_NAME}.app",
     icon=str(ICON) if ICON.exists() else None,

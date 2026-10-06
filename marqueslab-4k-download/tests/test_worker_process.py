@@ -11,6 +11,7 @@ import json
 import subprocess
 import sys
 from dataclasses import asdict
+import pytest
 from pathlib import Path
 from urllib.parse import quote
 
@@ -77,6 +78,7 @@ def test_worker_command_runs_from_source(monkeypatch):
 
 def test_worker_command_is_runnable(tmp_path, media_server, sample_media):
     """The CLI entry point stays available for headless and scripted runs."""
+    pytest.importorskip("PySide6", reason="o entry point vive em app.py")
     url = f"{media_server}/{quote(sample_media.name)}"
     command = worker_command(spec_for(url, tmp_path / "cli"))
     process = subprocess.run(command, capture_output=True, text=True, timeout=180)

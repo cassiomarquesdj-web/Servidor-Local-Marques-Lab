@@ -106,7 +106,27 @@ Etapas do pipeline de release, nesta ordem, com falha dura em qualquer uma:
 O passo a passo das credenciais Apple está em [DISTRIBUICAO.md](DISTRIBUICAO.md).
 O estado atual e o que foi de fato validado estão em [DIAGNOSTICO.md](DIAGNOSTICO.md).
 
+## Windows
+
+O mesmo código gera um aplicativo Windows com as mesmas funcionalidades: fila,
+4K, MP3 320 kbps, perfil compatível com Premiere/After Effects, sessão de
+navegador e FFmpeg embarcado.
+
+O build sai do GitHub Actions (`4K Download — Windows`) em dois formatos:
+
+- **Instalador** `MarquesLab-4K-Download-<versão>-windows-x64-setup.exe` — instala
+  por usuário, sem pedir senha de administrador, cria atalhos e desinstalador.
+- **Portátil** `MarquesLab-4K-Download-<versão>-windows-x64-portatil.zip` — basta
+  descompactar e executar.
+
+Nos dois casos não é preciso instalar Python, FFmpeg nem qualquer dependência.
+
+O executável **não é assinado**: sem um certificado Authenticode o SmartScreen
+mostra um aviso na primeira execução (Mais informações → Executar assim mesmo).
+Isso é o equivalente ao Developer ID no macOS e depende de certificado pago.
+
 ## Requisitos do usuário final
 
-- macOS 12 Monterey ou superior (imposto pelas bibliotecas Qt embarcadas).
-- Apple Silicon ou Intel.
+- macOS 12 Monterey ou superior (imposto pelas bibliotecas Qt embarcadas), em
+  Apple Silicon ou Intel.
+- Windows 10 ou 11, 64 bits.

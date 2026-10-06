@@ -1,0 +1,106 @@
+name: 4K Download — Windows
+
+on:
+  push:
+    branches: ["main", "feat/**", "agent/**"]
+    paths:
+      - "marqueslab-4k-download/**"
+      - ".github/workflows/marqueslab-4k-download-windows.yml"
+  pull_request:
+    paths:
+      - "marqueslab-4k-download/**"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: marqueslab-4k-download
+    shell: bash
+
+jobs:
+  build:
+    name: Executável e instalador (x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Suíte de testes (inclui download real via servidor local)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q --tb=short
+
+      - name: FFmpeg embarcado disponível
+        run: |
+          python - <<'PY'
+          import subprocess
+          from engine import ffmpeg_executable
+          binary = ffmpeg_executable()
+          assert binary, "FFmpeg não resolvido"
+          print(subprocess.run([binary, "-version"], capture_output=True, text=True).stdout.splitlines()[0])
+          PY
+
+      - name: Construir o executável
+        run: |
+          rm -rf build dist
+          python -m PyInstaller --noconfirm --clean MarquesLab4KDownload.spec
+
+      - name: Conferir o conteúdo do pacote
+        run: |
+          APP="dist/Marques Lab 4K Download"
+          test -f "$APP/Marques Lab 4K Download.exe" || { echo "executável ausente"; exit 1; }
+          find "$APP" -iname "ffmpeg*.exe" | head -1 | grep . || { echo "FFmpeg não embarcado"; exit 1; }
+          echo "Tamanho: $(du -sh "$APP" | cut -f1)"
+
+      - name: Download e conversão reais dentro do app empacotado
+        run: |
+          "dist/Marques Lab 4K Download/Marques Lab 4K Download.exe" --self-test-download
+
+      - name: Pacote portátil (.zip)
+        run: |
+          mkdir -p release
+          VERSION="$(python -c 'import branding; print(branding.VERSION)')"
+          powershell -Command "Compress-Archive -Path 'dist/Marques Lab 4K Download/*' -DestinationPath 'release/MarquesLab-4K-Download-$VERSION-windows-x64-portatil.zip' -Force"
+          ls -lh release
+
+      - name: Instalador (Inno Setup)
+        run: |
+          VERSION="$(python -c 'import branding; print(branding.VERSION)')"
+          ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          if [ ! -f "$ISCC" ]; then
+            echo "Inno Setup não encontrado no runner; instalando"
+            choco install innosetup -y --no-progress
+          fi
+          "$ISCC" //DAppVersion="$VERSION" packaging/windows/marqueslab.iss
+          ls -lh release
+
+      - name: Publicar artefatos
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarquesLab-4K-Download-windows-x64
+          path: |
+            marqueslab-4k-download/release/*.zip
+            marqueslab-4k-download/release/*.exe
+          if-no-files-found: error
+
+      - name: Resumo
+        if: always()
+        run: |
+          {
+            echo "## Marques Lab 4K Download — Windows"
+            echo
+            echo "- Runner: $RUNNER_OS $(python -c 'import platform;print(platform.machine())')"
+            echo "- Python: $(python --version 2>&1)"
+            echo "- Executável e FFmpeg embarcados: sem instalar nada no PC do usuário"
+            echo "- Instalador por usuário: não pede senha de administrador"
+            echo
+            echo "O executável **não é assinado**: o SmartScreen mostrará um aviso"
+            echo "na primeira execução até existir um certificado de Authenticode."
+          } >> "$GITHUB_STEP_SUMMARY"

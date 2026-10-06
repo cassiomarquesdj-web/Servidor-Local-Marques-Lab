@@ -32,7 +32,8 @@ from engine import (
     format_duration, friendly_error, run_worker, split_urls,
 )
 
-ICON_PATH = Path(__file__).resolve().parent / "assets" / "AppIcon.icns"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+ICON_PATH = ASSETS_DIR / ("AppIcon.ico" if sys.platform == "win32" else "AppIcon.icns")
 
 
 class JobStatus(str, Enum):
@@ -170,7 +171,18 @@ class DownloadWorker(QObject):
 
 
 def support_dir() -> Path:
-    base = Path.home() / "Library" / "Application Support" / APP_NAME
+    """Where the app keeps its own bookkeeping, per platform convention.
+
+    Never the download folder: macOS gates ~/Downloads behind TCC and the first
+    access blocks until the user answers the privacy prompt.
+    """
+    if sys.platform == "win32":
+        root = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support"
+    else:
+        root = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+    base = root / APP_NAME
     base.mkdir(parents=True, exist_ok=True)
     return base
 
@@ -299,7 +311,9 @@ def reveal_in_file_manager(path: Path) -> None:
     if system == "Darwin":
         subprocess.run(["open", "-R", str(path)], check=False)
     elif system == "Windows":
-        subprocess.run(["explorer", "/select,", str(path)], check=False)
+        # explorer accepts "/select," and the path as a single argument; passing
+        # them separately opens the user's Documents folder instead.
+        subprocess.run(f'explorer /select,"{path}"', check=False, shell=True)
     else:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent)))
 
